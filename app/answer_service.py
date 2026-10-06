@@ -57,7 +57,6 @@ SYSTEM_INSTRUCTION = """
 8. used_sections에는 실제 답변 근거로 사용한 섹션명만 넣으세요.
 9. 답변의 핵심 주장 전체가 원문으로 뒷받침되면 grounded=true입니다.
 10. 원문이 없거나 질문에 답할 근거가 없으면 grounded=false입니다.
-11. 의미업음
 """.strip()
 
 
