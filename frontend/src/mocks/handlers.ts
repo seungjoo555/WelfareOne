@@ -15,6 +15,8 @@ import type {
 //   "에러"     → 429 LLM_RATE_LIMITED
 //   "날씨"     → (정책 선택 후) 현재 정책 질문이 아님 분기
 //   "근거없음" → (정책 선택 후) grounded=false 답변
+//   "관련낮음" → 관련도 낮은 후보(거리 0.50 초과)가 "더 보기"로 접히는지 확인
+//   "재판정"   → 서버가 LLM으로 판정한 응답(relevance_checked)에서 판정 결과대로 접히는지 확인
 //   "키없음"   → 401 API_KEY_REQUIRED (API 키 입력 창이 열리는지 확인)
 //   "키오류"   → 401 INVALID_API_KEY
 
@@ -89,6 +91,34 @@ export const handlers = [
       return HttpResponse.json(empty);
     }
     const regionText = [body.region.level1, body.region.level2].filter(Boolean).join(" ");
+    if (body.question.includes("재판정")) {
+      // 서버가 LLM으로 관련도를 판정한 응답: 거리가 가까워도 무관 판정이면 접히고, 거리가 멀어도 관련 판정이면 보인다
+      const judged: SearchResponse = {
+        analysis,
+        relevance_checked: true,
+        low_relevance_ids: ["local:MOCK0201"],
+        local_policies: [
+          candidate({ policy_id: "local:MOCK0202", title: "[예시] 거리는 멀지만 관련 있는 정책", region_text: regionText, scope: "광역", distance: 0.54, summary: summaryText("[예시] 거리는 멀지만 관련 있는 정책", regionText, "LLM이 관련 있다고 판정한 후보입니다. (mock 데이터)") }),
+          candidate({ policy_id: "local:MOCK0201", title: "[예시] 거리는 가깝지만 무관한 정책", region_text: regionText, scope: "시군구", distance: 0.2, summary: summaryText("[예시] 거리는 가깝지만 무관한 정책", regionText, "LLM이 무관하다고 판정한 후보입니다. (mock 데이터)") }),
+        ],
+        national_policies: [],
+      };
+      return HttpResponse.json(judged);
+    }
+    if (body.question.includes("관련낮음")) {
+      // 관련도가 낮은(거리 0.50 초과) 후보가 접히는지 확인하는 케이스
+      const low: SearchResponse = {
+        analysis,
+        local_policies: [
+          candidate({ policy_id: "local:MOCK0101", title: "[예시] 거리 가까운 지역 정책", region_text: regionText, scope: "시군구", distance: 0.31, summary: summaryText("[예시] 거리 가까운 지역 정책", regionText, "관련도가 높은 후보입니다. (mock 데이터)") }),
+          candidate({ policy_id: "local:MOCK0102", title: "[예시] 거리 먼 지역 정책", region_text: regionText, scope: "광역", distance: 0.53, summary: summaryText("[예시] 거리 먼 지역 정책", regionText, "관련도가 낮은 후보입니다. (mock 데이터)") }),
+        ],
+        national_policies: [
+          candidate({ policy_id: "national:MOCK0103", title: "[예시] 거리 먼 중앙부처 정책", region_text: "", scope: "중앙부처", distance: 0.54, summary: summaryText("[예시] 거리 먼 중앙부처 정책", "보건복지부", "관련도가 낮은 후보입니다. (mock 데이터)") }),
+        ],
+      };
+      return HttpResponse.json(low);
+    }
     const result: SearchResponse = {
       analysis,
       local_policies: [

@@ -56,6 +56,8 @@ export function ChatPage({ state, dispatch, history }: Props) {
             analysis: res.analysis,
             local_policies: res.local_policies,
             national_policies: res.national_policies,
+            relevance_checked: res.relevance_checked,
+            low_relevance_ids: res.low_relevance_ids,
           },
         });
       }

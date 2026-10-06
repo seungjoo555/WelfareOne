@@ -194,6 +194,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .chip:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .candidate-group h3 { font-size: 0.95em; margin-bottom: 6px; }
+.low-relevance { margin-top: 8px; }
+.low-relevance summary { cursor: pointer; color: var(--accent); font-size: 0.9em; }
+.low-relevance-note { font-size: 0.82em; color: var(--muted); margin: 6px 0; }
 .candidate-list { display: grid; gap: 8px; }
 .candidate {
   text-align: left; display: flex; flex-direction: column; gap: 2px; width: 100%;

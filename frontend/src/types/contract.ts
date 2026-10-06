@@ -62,6 +62,10 @@ export interface SearchResponse {
   analysis: SearchAnalysis;
   local_policies: PolicyCandidate[];
   national_policies: PolicyCandidate[];
+  // [초안] LLM 관련도 재판정 결과. relevance_checked가 true면 low_relevance_ids에 든 후보만 "관련도 낮음"으로 접고,
+  // false(재판정을 안 했거나 실패)면 거리(distance)로 접는다. 옛 서버·저장된 기록에는 없을 수 있다.
+  relevance_checked?: boolean;
+  low_relevance_ids?: string[];
 }
 
 // [초안] GET /policies/{policy_id}  (없으면 404 POLICY_NOT_FOUND)

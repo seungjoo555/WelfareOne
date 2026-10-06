@@ -12,6 +12,8 @@ export type Message =
       analysis: SearchAnalysis;
       local_policies: PolicyCandidate[];
       national_policies: PolicyCandidate[];
+      relevance_checked?: boolean; // contract.ts SearchResponse 참고
+      low_relevance_ids?: string[];
     }
   | { id: string; type: "ai_answer"; answer: AnswerResult }
   // INTERRUPTED: 응답을 받기 전에 페이지가 닫힌 저장된 상담을 다시 열었을 때 붙이는 안내
