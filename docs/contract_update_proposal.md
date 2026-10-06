@@ -47,6 +47,15 @@ INVALID_API_KEY    키 형식이 틀렸거나 Gemini가 거부한 경우(401/403
 - 값 근거(평가 질문 280개 실측): top3 정답 266건 중 264건 보존(99.2%), 무의미 질문 7개는 모두 빈 결과. 임베딩 모델·DB가 바뀌면 `scripts/measure_search_distance.py`로 다시 측정한다.
 - 제안: 9장 검색 규칙에 "9. 거리가 `max_distance`보다 먼 후보는 제외한다(기본 0.60)" 추가, 상수 위치(`search_service.py` vs `config.py`)는 담당자 협의.
 
+### 4-1. 9장 — 키워드 재정렬 (규칙 8 이행)
+
+실제: `search_policies(..., include_keywords=None, exclude_keywords=None)` 인자 추가. 질문 분석기의 `include_keywords`/`exclude_keywords`를 받아 **점수만 조정하고 후보는 걸러내지 않는다.**
+
+- 키워드가 정책명에 있으면 +0.10, 요약 본문에만 있으면 +0.05(키워드당, 최대 3개까지). `exclude_keywords`는 같은 크기로 감점. 구("복지 지원 사업")는 단어로 쪼개고 "지원·사업·청년·비용" 같은 일반어와 1글자는 무시한다.
+- 근거(평가 질문 75개, Gemini가 만든 키워드 사용): 불일치 후보를 제거하는 하드 필터는 정답 5/69(7.2%)를 잃어 채택하지 않았다. 가산점은 정답 손실 없이 top3 진입 69→71, 1위 60→63. 가산점을 더 키워도(0.20/0.10) 이득이 늘지 않았다(70/63).
+- 한계: `exclude_keywords` 감점은 분석기가 실제로 내놓은 값이 0건이라 검증하지 못했다. 표본이 작아(75개) 값은 추후 재측정 대상이다.
+- API(`POST /policies/search`)와 CLI가 분석 결과의 키워드를 그대로 넘긴다.
+
 ## 5. 10장 정책 상세 조회 — 부분 구현
 
 계약서의 `get_policy_details(policy_id, sections)`는 아직 없다. 대신 API 구현을 위해 다음이 생겼다.
