@@ -1,4 +1,4 @@
-import { ERROR_MESSAGES, OPENER_TEXT } from "../../constants/text";
+import { ERROR_MESSAGES, INTERRUPTED_NOTICE, OPENER_TEXT } from "../../constants/text";
 import { INTENT_LABELS } from "../../constants/sections";
 import type { Message } from "../../types/chat";
 import type { PolicyCandidate } from "../../types/contract";
@@ -84,6 +84,13 @@ export function MessageItem({ message, actions }: { message: Message; actions: M
         </AiRow>
       );
     case "ai_notice":
+      if (message.code === "INTERRUPTED") {
+        return (
+          <AiRow>
+            <p className="warning" role="status">{INTERRUPTED_NOTICE}</p>
+          </AiRow>
+        );
+      }
       return (
         <AiRow>
           <p>현재 선택한 정책에 대한 질문으로 확인되지 않았어요. 다른 정책을 찾으려면 아래 버튼을 눌러 주세요.</p>

@@ -1,3 +1,4 @@
+import type { Conversation } from "../storage/history";
 import type { Message } from "../types/chat";
 import type { RegionSelection } from "../types/contract";
 
@@ -11,6 +12,9 @@ export interface CurrentPolicy {
 
 export interface ConversationState {
   phase: "start" | "chat";
+  // 상담 기록(localStorage) 저장·복원에 쓰는 식별자. 질문이 없는 상담은 저장하지 않는다.
+  conversation_id: string | null;
+  created_at: number | null;
   region: RegionSelection | null;
   age: number | null;
   messages: Message[];
@@ -20,12 +24,28 @@ export interface ConversationState {
 
 export const initialState: ConversationState = {
   phase: "start",
+  conversation_id: null,
+  created_at: null,
   region: null,
   age: null,
   messages: [],
   current_policy: null,
   pending: false,
 };
+
+// 저장된 상담을 화면 상태로 바꾼다. messages는 같은 배열을 그대로 쓴다(저장 여부를 참조 비교로 판단).
+export function stateFromConversation(conversation: Conversation): ConversationState {
+  return {
+    phase: "chat",
+    conversation_id: conversation.id,
+    created_at: conversation.created_at,
+    region: conversation.region,
+    age: conversation.age,
+    messages: conversation.messages,
+    current_policy: conversation.current_policy,
+    pending: false,
+  };
+}
 
 export const uid = (): string =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -39,6 +59,7 @@ export type Action =
   | { type: "EDIT_CONDITIONS" }
   | { type: "CANCEL_EDIT" }
   | { type: "NEW_CHAT" }
+  | { type: "LOAD"; conversation: Conversation } // 저장된 상담으로 전환
   | { type: "USER_SEND"; text: string }
   | { type: "RESOLVE"; message: Message } // 로딩 말풍선을 실제 응답으로 교체
   | { type: "SELECT_POLICY"; policy: CurrentPolicy }
@@ -47,9 +68,12 @@ export type Action =
 export function conversationReducer(state: ConversationState, action: Action): ConversationState {
   switch (action.type) {
     case "START":
-      // 지역·나이가 바뀌면 이전 후보와 선택 정책은 의미가 없으므로 모두 초기화한다.
+      // 지역·나이가 바뀌면 이전 후보와 선택 정책은 의미가 없으므로 새 상담으로 시작한다.
+      // 이전 상담은 기록에 그대로 남는다(질문이 있었던 경우).
       return {
         phase: "chat",
+        conversation_id: uid(),
+        created_at: Date.now(),
         region: action.region,
         age: action.age,
         messages: [opener()],
@@ -61,7 +85,17 @@ export function conversationReducer(state: ConversationState, action: Action): C
     case "CANCEL_EDIT":
       return { ...state, phase: state.region ? "chat" : "start" };
     case "NEW_CHAT":
-      return { ...state, messages: [opener()], current_policy: null, pending: false };
+      // 지역·나이는 유지하고 새 상담을 만든다. 이전 상담은 기록에 남는다.
+      return {
+        ...state,
+        conversation_id: uid(),
+        created_at: Date.now(),
+        messages: [opener()],
+        current_policy: null,
+        pending: false,
+      };
+    case "LOAD":
+      return stateFromConversation(action.conversation);
     case "USER_SEND":
       return {
         ...state,

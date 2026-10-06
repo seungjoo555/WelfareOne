@@ -3,8 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
     <link rel="icon" href="data:," />
     <title>WelfareOne</title>
+    <script>
+      // 저장된 테마를 React가 뜨기 전에 적용한다(다크 사용자의 흰 화면 깜빡임 방지).
+      // 키와 값은 src/utils/theme.ts와 같아야 한다. 저장소를 못 쓰면 시스템 설정을 따른다.
+      try {
+        var theme = localStorage.getItem("welfareone.theme");
+        if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

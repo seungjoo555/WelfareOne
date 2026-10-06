@@ -1,10 +1,14 @@
+/* 테마: 시스템(기본) / 라이트 / 다크. 선택값은 <html data-theme>로 표시한다(src/utils/theme.ts).
+   배경·글자·테두리는 Chrome처럼 무채색 계열, 강조색은 서비스 색(청록)을 유지한다. */
 :root {
-  --bg: #f6f8f8;
+  color-scheme: light dark; /* 입력창·select·스크롤바 같은 기본 컨트롤도 테마를 따른다 */
+  /* light-dark()를 지원하지 않는 구형 브라우저용 기본값(라이트) */
+  --bg: #f8f9fa;
   --surface: #ffffff;
-  --surface-2: #eef3f2;
-  --text: #17211f;
-  --muted: #5d6b68;
-  --border: #d8e1df;
+  --surface-2: #f1f3f4;
+  --text: #202124;
+  --muted: #5f6368;
+  --border: #dadce0;
   --accent: #0f766e;
   --accent-text: #ffffff;
   --accent-soft: #d9f0ec;
@@ -14,22 +18,25 @@
   --radius: 12px;
   --font: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
-@media (prefers-color-scheme: dark) {
+/* light-dark(라이트 값, 다크 값): 값을 한 곳에서 정의한다. color-scheme이 light면 앞, dark면 뒤 값을 쓴다. */
+@supports (color: light-dark(#000, #fff)) {
   :root {
-    --bg: #0f1514;
-    --surface: #182120;
-    --surface-2: #202c2a;
-    --text: #e8efed;
-    --muted: #9fb0ac;
-    --border: #2b3a37;
-    --accent: #2dd4bf;
-    --accent-text: #06201c;
-    --accent-soft: #123a35;
-    --warn-bg: #3a2e0c;
-    --warn-text: #f6d58a;
-    --danger: #ff8a7a;
+    --bg: light-dark(#f8f9fa, #202124);
+    --surface: light-dark(#ffffff, #292a2d);
+    --surface-2: light-dark(#f1f3f4, #303134);
+    --text: light-dark(#202124, #e8eaed);
+    --muted: light-dark(#5f6368, #9aa0a6);
+    --border: light-dark(#dadce0, #3c4043);
+    --accent: light-dark(#0f766e, #2dd4bf);
+    --accent-text: light-dark(#ffffff, #06201c);
+    --accent-soft: light-dark(#d9f0ec, #123a35);
+    --warn-bg: light-dark(#fff4d6, #3a2e0c);
+    --warn-text: light-dark(#7a5200, #f6d58a);
+    --danger: light-dark(#b42318, #ff8a7a);
   }
 }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
@@ -74,7 +81,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .badge.mock { background: var(--warn-bg); color: var(--warn-text); }
 
 /* 시작 화면 */
-.start { min-height: 100%; display: grid; place-items: center; padding: 24px 16px; }
+.start { position: relative; min-height: 100%; display: grid; place-items: center; padding: 24px 16px; }
 .start-card {
   width: 100%; max-width: 440px; background: var(--surface);
   border: 1px solid var(--border); border-radius: 16px; padding: 28px 24px;
@@ -90,6 +97,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .field select:disabled { opacity: 0.6; }
 .actions { display: flex; justify-content: flex-end; gap: 8px; }
 .error-box { border: 1px solid var(--danger); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+
+/* 테마 선택(시스템/라이트/다크) */
+.theme-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; padding: 2px; background: var(--bg); }
+.theme-option { border: 0; background: transparent; border-radius: 999px; padding: 4px 10px; font-size: 0.82em; color: var(--muted); cursor: pointer; }
+.theme-option:hover:not(.active) { color: var(--text); }
+.theme-option.active { background: var(--accent); color: var(--accent-text); }
+.theme-corner { position: absolute; top: 12px; right: 16px; }
 
 /* API 키 입력 대화상자 */
 .modal-backdrop {
@@ -109,12 +123,39 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .check input { margin-top: 5px; }
 
 /* 채팅 레이아웃 */
-.app { height: 100%; display: grid; grid-template-columns: 220px 1fr; }
+.app { height: 100%; display: grid; grid-template-columns: 240px 1fr; grid-template-rows: minmax(0, 1fr); }
 .sidebar {
   background: var(--surface); border-right: 1px solid var(--border);
   padding: 16px; display: flex; flex-direction: column; gap: 12px;
 }
 .brand { font-weight: 700; color: var(--accent); font-size: 1.1rem; }
+
+/* 상담 기록 목록 */
+.sidebar { min-height: 0; }
+.history { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.history-heading { font-size: 0.75em; font-weight: 600; color: var(--muted); margin: 4px 0; }
+.history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.history-item { display: flex; align-items: center; border-radius: 10px; }
+.history-item:hover, .history-item.active { background: var(--surface-2); }
+.history-item.active { box-shadow: inset 3px 0 0 var(--accent); }
+.history-open {
+  flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 7px 8px; cursor: pointer;
+  display: flex; flex-direction: column; gap: 1px; border-radius: 10px;
+}
+.history-open:disabled { cursor: not-allowed; opacity: 0.6; }
+.history-title { font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-meta { font-size: 0.75em; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-delete {
+  flex: none; background: none; border: 0; color: var(--muted); cursor: pointer; padding: 6px 8px;
+  border-radius: 8px; opacity: 0; font-size: 0.8em;
+}
+.history-item:hover .history-delete, .history-item:focus-within .history-delete, .history-delete:focus-visible { opacity: 1; }
+.history-delete:hover:not(:disabled) { color: var(--danger); }
+.history-delete:disabled { cursor: not-allowed; }
+.history-empty { font-size: 0.82em; }
+.history-footer { margin-top: auto; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; font-size: 0.78em; }
+.sidebar-bottom { border-top: 1px solid var(--border); padding-top: 12px; display: flex; justify-content: center; }
+@media (hover: none) { .history-delete { opacity: 1; } }
 .main { display: flex; flex-direction: column; min-width: 0; height: 100%; }
 .header {
   display: flex; align-items: center; gap: 10px; padding: 10px 16px;

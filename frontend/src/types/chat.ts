@@ -14,6 +14,7 @@ export type Message =
       national_policies: PolicyCandidate[];
     }
   | { id: string; type: "ai_answer"; answer: AnswerResult }
-  | { id: string; type: "ai_notice"; code: "NOT_CURRENT_POLICY" }
+  // INTERRUPTED: 응답을 받기 전에 페이지가 닫힌 저장된 상담을 다시 열었을 때 붙이는 안내
+  | { id: string; type: "ai_notice"; code: "NOT_CURRENT_POLICY" | "INTERRUPTED" }
   | { id: string; type: "ai_error"; code: AppErrorCode }
   | { id: string; type: "ai_loading" };

@@ -5,6 +5,7 @@ import { toErrorCode } from "../../api/client";
 import type { AppErrorCode, RegionSelection, Regions } from "../../types/contract";
 import { loadApiKey } from "../../utils/apiKey";
 import { ApiKeyDialog } from "../settings/ApiKeyDialog";
+import { ThemeToggle } from "../settings/ThemeToggle";
 import { RegionSelect } from "./RegionSelect";
 
 interface Props {
@@ -65,6 +66,9 @@ export function StartForm({ initialRegion, initialAge, onSubmit, onCancel }: Pro
 
   return (
     <main className="start">
+      <div className="theme-corner">
+        <ThemeToggle />
+      </div>
       <form className="start-card" onSubmit={submit}>
         <h1>{SERVICE_NAME}</h1>
         <p className="lead">지역과 나이를 알려 주시면 내게 맞는 청년 복지정책을 찾아 드려요.</p>

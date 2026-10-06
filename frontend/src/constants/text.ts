@@ -18,6 +18,17 @@ export const ERROR_MESSAGES: Record<AppErrorCode, string> = {
 
 export const SERVICE_NAME = "WelfareOne";
 
+// 상담 기록(localStorage)
+export const INTERRUPTED_NOTICE = "이 질문은 답변을 받기 전에 페이지가 닫혀 응답이 없어요. 질문을 다시 보내 주세요.";
+export const HISTORY_EMPTY = "아직 저장된 상담이 없어요. 질문을 보내면 여기에 기록돼요.";
+export const HISTORY_PRIVACY = "상담 기록은 이 브라우저에만 저장돼요. 공용 PC에서는 사용 후 삭제해 주세요.";
+export const HISTORY_SAVE_ERRORS = {
+  quota: "저장 공간이 부족해 이 상담을 저장하지 못했어요. 오래된 상담을 삭제해 주세요.",
+  unavailable: "이 브라우저에서는 상담 기록을 저장할 수 없어요. 사생활 보호 모드나 저장소 차단 설정을 확인해 주세요.",
+} as const;
+export const CONFIRM_DELETE_ONE = "이 상담 기록을 삭제할까요?";
+export const CONFIRM_DELETE_ALL = "저장된 상담 기록을 모두 삭제할까요? 되돌릴 수 없어요.";
+
 export const OPENER_TEXT =
   "안녕하세요, WelfareOne입니다. 선택하신 지역과 나이를 기준으로 청년 복지정책을 찾아 드려요. " +
   "궁금한 상황이나 정책 이름을 편하게 입력해 주세요.";
