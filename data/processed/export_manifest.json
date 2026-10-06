@@ -1,0 +1,22 @@
+{
+  "exported_at": "2026-09-21T12:16:58+09:00",
+  "collection": "welfare_policy_sections_qwen_v3",
+  "collection_metadata": {
+    "schema_version": 3,
+    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+    "hnsw:space": "cosine",
+    "max_input_tokens": 300,
+    "overlap_tokens": 40
+  },
+  "policy_counts": {
+    "local": 1253,
+    "national": 165
+  },
+  "policy_total": 1418,
+  "chroma_record_count": 11850,
+  "embeddings_included_in_jsonl": false,
+  "files": {
+    "policies": "data/processed/policies.jsonl",
+    "chroma_records": "data/processed/chroma_records.jsonl"
+  }
+}

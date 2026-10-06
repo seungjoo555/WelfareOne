@@ -1,0 +1,32 @@
+# 비밀값 (예시 파일만 공유)
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+
+# 벡터 DB: 용량이 커서 Git에 올리지 않음 (5절 참고)
+data/chroma/
+
+# 개인 설정, 백업 파일
+.claude/settings.local.json
+*.7z
+*.zip
+
+# 선택: 조사용 산출물(35MB). 팀에서 공유할 필요가 없다면 주석을 풀어 제외
+# data/investigation/
+
+node_modules/
+dist/
+*.py[cod]
+.pytest_cache/
+.vscode/
+.idea/
+*.log
+.DS_Store
+Thumbs.db
+data/investigation/

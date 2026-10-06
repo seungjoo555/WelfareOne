@@ -1,0 +1,5 @@
+# 줄바꿈을 LF로 통일해 Windows/다른 환경이 섞여도 diff가 지저분해지지 않게 함
+* text=auto eol=lf
+*.xlsx binary
+*.sqlite3 binary
+*.bin binary
