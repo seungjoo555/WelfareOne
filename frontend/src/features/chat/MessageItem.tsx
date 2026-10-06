@@ -1,4 +1,10 @@
-import { ERROR_MESSAGES, INTERRUPTED_NOTICE, OPENER_TEXT } from "../../constants/text";
+import {
+  EMPTY_LOCAL_BUT_NATIONAL_TEXT,
+  EMPTY_NATIONAL_BUT_LOCAL_TEXT,
+  ERROR_MESSAGES,
+  INTERRUPTED_NOTICE,
+  OPENER_TEXT,
+} from "../../constants/text";
 import { INTENT_LABELS } from "../../constants/sections";
 import type { Message } from "../../types/chat";
 import type { PolicyCandidate } from "../../types/contract";
@@ -65,12 +71,14 @@ export function MessageItem({ message, actions }: { message: Message; actions: M
                 policies={message.local_policies}
                 selectedPolicyId={actions.selectedPolicyId}
                 onSelect={actions.onSelectPolicy}
+                emptyText={message.national_policies.length > 0 ? EMPTY_LOCAL_BUT_NATIONAL_TEXT : undefined}
               />
               <CandidateGroup
                 title="중앙부처 정책"
                 policies={message.national_policies}
                 selectedPolicyId={actions.selectedPolicyId}
                 onSelect={actions.onSelectPolicy}
+                emptyText={message.local_policies.length > 0 ? EMPTY_NATIONAL_BUT_LOCAL_TEXT : undefined}
               />
             </>
           )}
