@@ -7,17 +7,21 @@ import type { ConversationState, Action } from "../../state/conversation";
 import { uid } from "../../state/conversation";
 import type { PolicyCandidate } from "../../types/contract";
 import { loadApiKey } from "../../utils/apiKey";
+import type { ConversationHistory } from "../../state/useConversationHistory";
 import { ApiKeyDialog } from "../settings/ApiKeyDialog";
+import { ThemeToggle } from "../settings/ThemeToggle";
 import { ChatInput } from "./ChatInput";
+import { ConversationList } from "./ConversationList";
 import { CurrentPolicyBar } from "./CurrentPolicyBar";
 import { MessageList } from "./MessageList";
 
 interface Props {
   state: ConversationState;
   dispatch: React.Dispatch<Action>;
+  history: ConversationHistory;
 }
 
-export function ChatPage({ state, dispatch }: Props) {
+export function ChatPage({ state, dispatch, history }: Props) {
   const { region, age, current_policy, messages, pending } = state;
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [keyDialog, setKeyDialog] = useState<{ open: boolean; reason: "required" | "invalid" | null }>({
@@ -81,6 +85,10 @@ export function ChatPage({ state, dispatch }: Props) {
         >
           + 새 상담
         </button>
+        <ConversationList history={history} disabled={pending} onSelected={() => setSidebarOpen(false)} />
+        <div className="sidebar-bottom">
+          <ThemeToggle />
+        </div>
       </aside>
 
       <section className="main">

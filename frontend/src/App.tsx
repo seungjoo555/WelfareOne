@@ -1,10 +1,13 @@
 import { useReducer } from "react";
 import { ChatPage } from "./features/chat/ChatPage";
 import { StartForm } from "./features/start/StartForm";
-import { conversationReducer, initialState } from "./state/conversation";
+import { conversationReducer } from "./state/conversation";
+import { loadInitialState, useConversationHistory } from "./state/useConversationHistory";
 
 export default function App() {
-  const [state, dispatch] = useReducer(conversationReducer, initialState);
+  // 마지막으로 보던 상담이 저장돼 있으면 시작 화면 없이 그대로 이어서 연다.
+  const [state, dispatch] = useReducer(conversationReducer, undefined, loadInitialState);
+  const history = useConversationHistory(state, dispatch);
 
   if (state.phase === "start") {
     return (
@@ -16,5 +19,5 @@ export default function App() {
       />
     );
   }
-  return <ChatPage state={state} dispatch={dispatch} />;
+  return <ChatPage state={state} dispatch={dispatch} history={history} />;
 }
