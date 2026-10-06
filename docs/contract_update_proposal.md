@@ -76,3 +76,12 @@ INVALID_API_KEY    키 형식이 틀렸거나 Gemini가 거부한 경우(401/403
 1. 위 2·4번은 동작이 바뀐 항목이라 먼저 합의한다(오류 코드, 검색 규칙).
 2. 1·3·5·6번은 문서를 코드에 맞추는 작업이라 합의 즉시 반영해도 된다.
 3. 반영 후 `docs/HANDOFF.md`의 4절(API)·8절(알려진 이슈)도 함께 갱신한다(8절의 `title`/`region_text` null 이슈와 `requirements.txt` 항목은 이미 해결됨).
+
+### 4-2. 9장 — 검색 응답의 관련도 재판정 필드 (제안)
+
+`POST /policies/search` 응답에 필드 2개를 추가했습니다(기존 필드는 그대로, 추가만).
+
+- `relevance_checked: bool` — 상황형 질문의 후보를 LLM으로 다시 판정했으면 true, 판정을 안 했거나 실패했으면 false
+- `low_relevance_ids: list[str]` — 판정에서 "관련도 낮음"으로 본 `policy_id`. 목록의 후보는 응답에 그대로 포함되며 화면에서 접힌다.
+
+상황형 질문(`route == situation_search`)에서만 판정하며, 이때 후보를 범위별 8개까지 판정해 관련 판정을 앞쪽 최대 3개 + 무관 판정을 뒤쪽 최대 3개로 돌려줍니다(그 외에는 이전처럼 범위별 최대 3개). 판정 실패는 오류가 아니라 `relevance_checked=false`입니다. 새 오류 코드는 없습니다.

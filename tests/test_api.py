@@ -61,6 +61,7 @@ class FakeSearch:
 
     def search_policies(self, question, region, age=None, **kwargs):
         self.calls.append((question, region, age))
+        self.kwargs = kwargs
         if self.empty:
             return PolicySearchResult()
         return PolicySearchResult(
@@ -86,6 +87,8 @@ class FakeAnalyzer:
             intent="eligibility",
             intents=["eligibility", "application"],
             requested_sections=["target_criteria", "application", "administrative"],
+            include_keywords=["월세"],
+            exclude_keywords=["대출"],
         )
 
 
@@ -174,6 +177,22 @@ class ApiTest(unittest.TestCase):
         question, region, age = self.search.calls[0]
         self.assertEqual(question, "청년 월세가 부담돼요")
         self.assertEqual((region.level1, region.level2, age), ("경기도", "성남시", 24))
+
+    def test_search_passes_analyzer_keywords_to_service(self):
+        self.client.post("/policies/search", json=self.search_body())
+        self.assertEqual(self.search.kwargs["include_keywords"], ["월세"])
+        self.assertEqual(self.search.kwargs["exclude_keywords"], ["대출"])
+
+    def test_situation_search_uses_the_stricter_search_options(self):
+        self.client.post("/policies/search", json=self.search_body())  # FakeAnalyzer 기본 route = situation_search
+        self.assertEqual(self.search.kwargs["max_distance"], 0.55)
+        self.assertEqual(self.search.kwargs["region_bonus_scale"], 0.0)
+
+    def test_specific_policy_search_keeps_the_default_search_options(self):
+        self.analyzer.route = "specific_policy"
+        self.client.post("/policies/search", json=self.search_body())
+        self.assertNotIn("max_distance", self.search.kwargs)
+        self.assertNotIn("region_bonus_scale", self.search.kwargs)
 
     def test_search_without_level2_uses_empty_string(self):
         self.client.post("/policies/search", json=self.search_body(region={"level1": "세종특별자치시", "level2": None}, age=None))
@@ -276,6 +295,109 @@ class ApiTest(unittest.TestCase):
         for code, status, expected in ((429, 429, "LLM_RATE_LIMITED"), (None, 502, "LLM_RESPONSE_INVALID")):
             self.answers.error = llm_error(AnswerGenerationError, code=code)
             self.assert_error(self.client.post("/policies/local%3AEXAMPLE1/ask", json={"question": "신청 방법"}), status, expected)
+
+
+class FakeJudge:
+    """LLM 관련도 판정기 대역. relevant_ids에 든 policy_id만 관련 있음으로 판정한다."""
+
+    def __init__(self, relevant_ids=()):
+        self.relevant_ids = set(relevant_ids)
+        self.error = None
+        self.calls = []
+
+    def judge(self, question, search_query, candidates, age=None):
+        self.calls.append((question, search_query, [c.policy_id for c in candidates], age))
+        if self.error:
+            raise self.error
+        return {c.policy_id: c.policy_id in self.relevant_ids for c in candidates}
+
+
+class RerankApiTest(unittest.TestCase):
+    """POST /policies/search의 LLM 관련도 재판정: 켜짐/실패 시 대체/상황형 질문에만 적용."""
+
+    def setUp(self):
+        self.judge = FakeJudge()
+        self.factory_args = []
+
+        def factory(analyzer):
+            self.factory_args.append(analyzer)
+            return self.judge
+
+        self.search = FakeSearch()
+        self.analyzer = FakeAnalyzer()
+        services = Services(
+            FakeRepository(), self.search, self.analyzer, FakeAnswers(), REGIONS, relevance_judge_factory=factory
+        )
+        self.client_cm = TestClient(create_app(services), raise_server_exceptions=False)
+        self.client = self.client_cm.__enter__()
+        self.addCleanup(self.client_cm.__exit__, None, None, None)
+        self.body = {"question": "월세가 부담돼요", "region": {"level1": "경기도", "level2": "성남시"}, "age": 24}
+
+    def test_judged_candidates_are_marked_and_reported(self):
+        self.judge.relevant_ids = {"national:EXAMPLE2"}
+        data = self.client.post("/policies/search", json=self.body).json()
+        self.assertTrue(data["relevance_checked"])
+        self.assertEqual(data["low_relevance_ids"], ["local:EXAMPLE1"])
+        self.assertEqual([p["policy_id"] for p in data["local_policies"]], ["local:EXAMPLE1"])
+        self.assertEqual([p["policy_id"] for p in data["national_policies"]], ["national:EXAMPLE2"])
+
+    def test_judge_gets_original_question_search_query_age_and_the_analyzer(self):
+        self.client.post("/policies/search", json=self.body)
+        question, search_query, ids, age = self.judge.calls[0]
+        self.assertEqual((question, search_query, age), ("월세가 부담돼요", "청년 월세가 부담돼요", 24))
+        self.assertEqual(sorted(ids), ["local:EXAMPLE1", "national:EXAMPLE2"])
+        self.assertIs(self.factory_args[0], self.analyzer)
+
+    def test_candidate_pool_is_widened_only_when_judging(self):
+        self.client.post("/policies/search", json=self.body)
+        self.assertEqual(self.search.kwargs["local_top_k"], 8)
+        self.assertEqual(self.search.kwargs["national_top_k"], 8)
+
+    def test_judge_failure_falls_back_to_distance_results_without_error(self):
+        self.judge.error = RuntimeError("quota")
+        with self.assertLogs("welfareone.api", level="WARNING") as logs:
+            response = self.client.post("/policies/search", json=self.body)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data["relevance_checked"])
+        self.assertEqual(data["low_relevance_ids"], [])
+        self.assertEqual([p["policy_id"] for p in data["local_policies"]], ["local:EXAMPLE1"])
+        self.assertEqual([p["policy_id"] for p in data["national_policies"]], ["national:EXAMPLE2"])
+        # 로그에는 오류 종류만 남고 질문 내용은 남지 않는다
+        self.assertTrue(any("RuntimeError" in line for line in logs.output))
+        self.assertFalse(any("월세가 부담돼요" in line for line in logs.output))
+
+    def test_fallback_trims_the_widened_pool_back_to_three_per_scope(self):
+        class ManySearch(FakeSearch):
+            def search_policies(self, question, region, age=None, **kwargs):
+                self.kwargs = kwargs
+                return PolicySearchResult(
+                    local_policies=[candidate(f"local:{i}", f"지역 {i}", "시군구") for i in range(8)],
+                    national_policies=[candidate(f"national:{i}", f"중앙 {i}", "중앙부처") for i in range(8)],
+                )
+
+        self.judge.error = RuntimeError("x")
+        services = Services(
+            FakeRepository(), ManySearch(), self.analyzer, FakeAnswers(), REGIONS, relevance_judge_factory=lambda a: self.judge
+        )
+        with TestClient(create_app(services), raise_server_exceptions=False) as client:
+            data = client.post("/policies/search", json=self.body).json()
+        self.assertEqual(len(data["local_policies"]), 3)
+        self.assertEqual(len(data["national_policies"]), 3)
+
+    def test_specific_policy_questions_are_not_judged(self):
+        self.analyzer.route = "specific_policy"
+        data = self.client.post("/policies/search", json=self.body).json()
+        self.assertEqual(self.judge.calls, [])
+        self.assertFalse(data["relevance_checked"])
+        self.assertNotIn("local_top_k", self.search.kwargs)
+
+    def test_without_a_judge_factory_the_response_marks_not_checked(self):
+        services = Services(FakeRepository(), FakeSearch(), FakeAnalyzer(), FakeAnswers(), REGIONS)
+        with TestClient(create_app(services), raise_server_exceptions=False) as client:
+            data = client.post("/policies/search", json=self.body).json()
+        self.assertFalse(data["relevance_checked"])
+        self.assertEqual(data["low_relevance_ids"], [])
 
 
 VALID_KEY = "AIzaSyExampleKey-0123456789_abcdefghij"

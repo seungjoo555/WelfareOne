@@ -79,6 +79,9 @@ class _GeminiAnalysis(BaseModel):
         return value
 
 
+# 같은 질문이 실행마다 다른 검색어로 분석되는 것을 줄이기 위해 고정한다(temperature=0만으로는 흔들렸다).
+ANALYZER_SEED = 0
+
 SYSTEM_INSTRUCTION = """
 당신은 대한민국 청년 복지정책 검색 시스템의 질문 분석기입니다.
 사용자의 질문을 답하지 말고 검색과 대화 분기에 필요한 구조만 반환하세요.
@@ -110,6 +113,9 @@ SYSTEM_INSTRUCTION = """
 - 특정 정책명이 있으면 정확히 보존
 - 사용자가 말하지 않은 지역, 나이, 소득, 직업, 혼인 상태를 만들지 않음
 - '서울'을 '서울특별시'처럼 바꾸는 지역 정규화는 여기서 하지 않음
+- 구어체·감정·상태 표현만 있는 질문(예: '배고파', '춥다', '막막해')은, 그 상황에서 필요한 지원 분야를 정책 용어로 풀어 쓴다. 예: '배고파' → '무료 급식 식사 지원', '집이 없어요' → '주거 지원 임시 거처'
+- 질문의 핵심 상황(예: '배고파')을 버리고 일부 단어(예: '점심 추천')만 남기지 않는다
+- '청년 복지 정책'처럼 질문과 무관한 일반 검색어로 대체하지 않는다
 - 부정 표현은 제거하지 말고 exclude_keywords에도 핵심 제외 개념을 기록
 
 [기타 규칙]
@@ -152,7 +158,9 @@ class QuestionAnalyzer:
         api_key: str | None = None,
         model: str = GEMINI_MODEL,
         max_retries: int = 3,
+        seed: int | None = ANALYZER_SEED,
     ) -> None:
+        self.seed = seed
         _load_env_file(PROJECT_DIR / ".env")
         resolved_key = api_key or os.getenv("GEMINI_API_KEY")
         if not resolved_key:
@@ -189,6 +197,7 @@ class QuestionAnalyzer:
                     config=types.GenerateContentConfig(
                         system_instruction=SYSTEM_INSTRUCTION,
                         temperature=0,
+                        seed=self.seed,
                         response_mime_type="application/json",
                         response_schema=_GeminiAnalysis,
                         automatic_function_calling=types.AutomaticFunctionCallingConfig(

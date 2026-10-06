@@ -4,6 +4,7 @@ from .answer_service import AnswerGenerationError, AnswerService
 from .models import RegionSelection
 from .question_analyzer import QuestionAnalysisError, QuestionAnalyzer
 from .repository import PolicyRepository
+from .search_profiles import search_options
 from .search_service import PolicySearchService
 
 
@@ -187,6 +188,9 @@ def run() -> None:
             analysis.search_query,
             region,
             age=age,
+            include_keywords=analysis.include_keywords,
+            exclude_keywords=analysis.exclude_keywords,
+            **search_options(analysis.route),
         )
         local_candidates = result.local_policies
         national_candidates = result.national_policies

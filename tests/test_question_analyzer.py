@@ -1,6 +1,61 @@
 import unittest
 
-from app.question_analyzer import QuestionAnalyzer, _GeminiAnalysis
+from app.question_analyzer import (
+    ANALYZER_SEED,
+    SYSTEM_INSTRUCTION,
+    QuestionAnalyzer,
+    _GeminiAnalysis,
+)
+
+
+class _FakeModels:
+    def __init__(self):
+        self.configs = []
+
+    def generate_content(self, model, contents, config):
+        self.configs.append(config)
+
+        class Response:
+            parsed = _GeminiAnalysis(
+                route="situation_search",
+                search_query="무료 급식 식사 지원",
+                intent="policy_search",
+                intents=["policy_search"],
+                confidence=0.9,
+            )
+
+        return Response()
+
+
+class _FakeClient:
+    def __init__(self):
+        self.models = _FakeModels()
+
+
+class QuestionAnalyzerRequestTest(unittest.TestCase):
+    """Gemini 요청 설정(seed)과 검색어 지침. 실제 API는 호출하지 않는다."""
+
+    def make(self, **kwargs):
+        analyzer = QuestionAnalyzer(api_key="x" * 24, **kwargs)
+        analyzer.client = _FakeClient()
+        return analyzer
+
+    def test_seed_is_fixed_by_default_to_keep_results_stable(self):
+        analyzer = self.make()
+        analyzer.analyze_question("배고파")
+        config = analyzer.client.models.configs[0]
+        self.assertEqual(config.seed, ANALYZER_SEED)
+        self.assertEqual(config.temperature, 0)
+
+    def test_seed_can_be_disabled(self):
+        analyzer = self.make(seed=None)
+        analyzer.analyze_question("배고파")
+        self.assertIsNone(analyzer.client.models.configs[0].seed)
+
+    def test_instruction_tells_model_to_translate_colloquial_needs(self):
+        # 구어체 질문("배고파")이 그대로 검색어가 되어 결과가 비는 문제를 막는 지침이 빠지지 않았는지 확인한다.
+        for phrase in ("구어체", "배고파", "무료 급식 식사 지원", "점심 추천", "청년 복지 정책"):
+            self.assertIn(phrase, SYSTEM_INSTRUCTION)
 
 
 class QuestionAnalyzerMappingTest(unittest.TestCase):
