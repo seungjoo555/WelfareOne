@@ -17,16 +17,16 @@ data/chroma/
 *.7z
 *.zip
 
-# 선택: 조사용 산출물(35MB). 팀에서 공유할 필요가 없다면 주석을 풀어 제외
-# data/investigation/
-
 node_modules/
 dist/
-*.py[cod]
 .pytest_cache/
 .vscode/
 .idea/
 *.log
 .DS_Store
 Thumbs.db
+# 조사용 산출물(35MB)
 data/investigation/
+
+# 사람 라벨링 정답 키(거리·점수 포함): 라벨러에게 주거나 커밋하지 않는다
+data/evaluation/labeling/labeling_key_PRIVATE.csv
