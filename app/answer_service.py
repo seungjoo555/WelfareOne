@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import os
 import re
-import time
-from pathlib import Path
 
 from google import genai
-from google.genai import errors, types
+from google.genai import types
 from pydantic import BaseModel, Field, field_validator
 
 from .config import GEMINI_MODEL, PROJECT_DIR
+from .env import load_env_file
+from .gemini_retry import call_with_retry
 from .models import AnswerResult, PolicyResource, PolicySection
 
 
@@ -58,20 +58,6 @@ SYSTEM_INSTRUCTION = """
 9. 답변의 핵심 주장 전체가 원문으로 뒷받침되면 grounded=true입니다.
 10. 원문이 없거나 질문에 답할 근거가 없으면 grounded=false입니다.
 """.strip()
-
-
-def _load_env_file(path: Path) -> None:
-    if not path.exists():
-        return
-    for raw_line in path.read_text(encoding="utf-8-sig").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip().strip('"').strip("'")
-        if key:
-            os.environ.setdefault(key, value)
 
 
 def select_contexts(
@@ -173,7 +159,7 @@ class AnswerService:
         model: str = GEMINI_MODEL,
         max_retries: int = 3,
     ) -> None:
-        _load_env_file(PROJECT_DIR / ".env")
+        load_env_file(PROJECT_DIR / ".env")
         resolved_key = api_key or os.getenv("GEMINI_API_KEY")
         if not resolved_key:
             raise AnswerGenerationError(
@@ -207,53 +193,45 @@ class AnswerService:
             )
 
         contents = _build_contents(question, policy_id, policy_title, selected)
-        last_error: Exception | None = None
-        for attempt in range(self.max_retries):
-            try:
-                response = self.client.models.generate_content(
-                    model=self.model,
-                    contents=contents,
-                    config=types.GenerateContentConfig(
-                        system_instruction=SYSTEM_INSTRUCTION,
-                        temperature=0,
-                        response_mime_type="application/json",
-                        response_schema=_GeminiAnswer,
-                        automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                            disable=True,
-                        ),
+        def call() -> _GeminiAnswer:
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_INSTRUCTION,
+                    temperature=0,
+                    response_mime_type="application/json",
+                    response_schema=_GeminiAnswer,
+                    automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                        disable=True,
                     ),
-                )
-                parsed = response.parsed
-                if parsed is None:
-                    parsed = _GeminiAnswer.model_validate_json(response.text)
-                elif not isinstance(parsed, _GeminiAnswer):
-                    parsed = _GeminiAnswer.model_validate(parsed)
-                resource_sections = {
-                    "application", "documents", "contact_source", "administrative"
-                }
-                include_policy_resources = bool(
-                    resource_sections.intersection(requested_sections or [])
-                )
-                return self._to_result(
-                    parsed,
-                    policy_id,
-                    selected,
-                    resource_contexts=contexts if include_policy_resources else selected,
-                )
-            except errors.APIError as exc:
-                last_error = exc
-                status = getattr(exc, "code", None)
-                retryable = status in {429, 500, 502, 503, 504}
-                if not retryable or attempt == self.max_retries - 1:
-                    break
-                time.sleep(2 ** attempt)
-            except Exception as exc:
-                last_error = exc
-                break
+                ),
+            )
+            parsed = response.parsed
+            if parsed is None:
+                return _GeminiAnswer.model_validate_json(response.text)
+            if not isinstance(parsed, _GeminiAnswer):
+                return _GeminiAnswer.model_validate(parsed)
+            return parsed
 
-        raise AnswerGenerationError(
-            f"Gemini 답변 생성에 실패했습니다: {last_error}"
-        ) from last_error
+        try:
+            parsed = call_with_retry(call, self.max_retries)
+            resource_sections = {
+                "application", "documents", "contact_source", "administrative"
+            }
+            include_policy_resources = bool(
+                resource_sections.intersection(requested_sections or [])
+            )
+            return self._to_result(
+                parsed,
+                policy_id,
+                selected,
+                resource_contexts=contexts if include_policy_resources else selected,
+            )
+        except Exception as exc:
+            raise AnswerGenerationError(
+                f"Gemini 답변 생성에 실패했습니다: {exc}"
+            ) from exc
 
     @staticmethod
     def _to_result(

@@ -29,11 +29,9 @@ from pydantic import BaseModel, Field, StringConstraints
 from .answer_service import AnswerGenerationError
 from .models import PolicySection, RegionSelection
 from .question_analyzer import QuestionAnalysisError
-from .relevance_judge import POOL_PER_SCOPE, rerank_with_judge
-from .search_profiles import search_options
+from .search_pipeline import run_search
 
 logger = logging.getLogger("welfareone.api")
-DEFAULT_TOP_K = 3  # search_policies의 기본 local_top_k/national_top_k와 같다(재판정 실패 시 풀을 이 개수로 줄인다)
 T = TypeVar("T")
 
 # 질문 최대 길이: 프론트엔드 MAX_QUESTION_LENGTH(500)와 같은 값
@@ -70,12 +68,13 @@ def build_services() -> Services:
     # 무거운 모듈(torch, sentence-transformers)은 실제 서버를 띄울 때만 불러온다.
     from .answer_service import AnswerService
     from .config import PROJECT_DIR
-    from .question_analyzer import QuestionAnalyzer, _load_env_file
+    from .env import load_env_file
+    from .question_analyzer import QuestionAnalyzer
     from .relevance_judge import RelevanceJudge
     from .repository import PolicyRepository
     from .search_service import PolicySearchService
 
-    _load_env_file(PROJECT_DIR / ".env")  # 서버 키 폴백 플래그도 .env에서 읽을 수 있게 한다
+    load_env_file(PROJECT_DIR / ".env")  # 서버 키 폴백 플래그도 .env에서 읽을 수 있게 한다
     allow_server_key = os.getenv(ALLOW_SERVER_KEY_ENV, "").strip().lower() in {"1", "true", "yes"}
     rerank_enabled = os.getenv(LLM_RERANK_ENV, "1").strip().lower() not in {"0", "false", "no", "off"}
 
@@ -238,38 +237,12 @@ def create_app(services: Services | None = None) -> FastAPI:
         except QuestionAnalysisError as exc:
             raise _llm_error(exc) from exc
 
-        # 상황형 질문이면 후보를 넉넉히(범위별 POOL_PER_SCOPE개) 뽑아 LLM으로 관련도를 다시 판정한다.
+        # 상황형 질문이면 LLM 관련도 재판정을 켠다(실패하면 run_search가 거리 기반 결과로 대신한다).
         judge = None
-        pool_options: dict[str, int] = {}
         if analysis.route == "situation_search" and services.relevance_judge_factory is not None:
             judge = services.relevance_judge_factory(analyzer)
-            pool_options = {"local_top_k": POOL_PER_SCOPE, "national_top_k": POOL_PER_SCOPE}
-
-        # 검색 결과가 없어도 오류가 아니라 빈 목록으로 응답한다(계약서 9장 검색 규칙 5).
-        result = services.search.search_policies(
-            analysis.search_query,
-            region,
-            age=body.age,
-            include_keywords=analysis.include_keywords,
-            exclude_keywords=analysis.exclude_keywords,
-            **search_options(analysis.route),
-            **pool_options,
-        )
-        local_policies, national_policies = result.local_policies, result.national_policies
-        low_relevance_ids: list[str] = []
-        relevance_checked = False
-        if judge is not None:
-            try:
-                outcome = rerank_with_judge(judge, body.question, analysis.search_query, result, body.age)
-            except Exception as exc:  # noqa: BLE001 - 판정은 부가 단계: 실패하면 거리 기반 결과로 대신한다
-                # 질문·키·응답 본문은 남기지 않고 오류 종류만 기록한다
-                logger.warning("relevance judge failed (%s); falling back to distance ranking", type(exc).__name__)
-                local_policies = local_policies[:DEFAULT_TOP_K]
-                national_policies = national_policies[:DEFAULT_TOP_K]
-            else:
-                local_policies, national_policies = outcome.local_policies, outcome.national_policies
-                low_relevance_ids = outcome.low_relevance_ids
-                relevance_checked = True
+        outcome = run_search(analysis, services.search, region, body.age, body.question, judge)
+        local_policies, national_policies = outcome.local_policies, outcome.national_policies
         return {
             "analysis": {
                 "route": analysis.route,
@@ -279,8 +252,8 @@ def create_app(services: Services | None = None) -> FastAPI:
             "local_policies": [asdict(item) for item in local_policies],
             "national_policies": [asdict(item) for item in national_policies],
             # relevance_checked가 true면 low_relevance_ids만 "관련도 낮음"으로 접고, false면 거리로 접는다
-            "relevance_checked": relevance_checked,
-            "low_relevance_ids": low_relevance_ids,
+            "relevance_checked": outcome.relevance_checked,
+            "low_relevance_ids": outcome.low_relevance_ids,
         }
 
     @app.get("/policies/{policy_id}")

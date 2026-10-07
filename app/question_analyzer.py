@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import os
-import time
-from pathlib import Path
 from typing import Literal
 
 from google import genai
-from google.genai import errors, types
+from google.genai import types
 from pydantic import BaseModel, Field, field_validator
 
 from .config import GEMINI_MODEL, PROJECT_DIR
+from .env import load_env_file
+from .gemini_retry import call_with_retry
 from .models import QuestionAnalysis
 
 
@@ -126,21 +126,6 @@ SYSTEM_INSTRUCTION = """
 """.strip()
 
 
-def _load_env_file(path: Path) -> None:
-    """추가 패키지 없이 프로젝트의 .env 값을 환경변수에 읽는다."""
-    if not path.exists():
-        return
-    for raw_line in path.read_text(encoding="utf-8-sig").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip().strip('"').strip("'")
-        if key:
-            os.environ.setdefault(key, value)
-
-
 def _clean_words(values: list[str]) -> list[str]:
     result: list[str] = []
     for value in values:
@@ -161,7 +146,7 @@ class QuestionAnalyzer:
         seed: int | None = ANALYZER_SEED,
     ) -> None:
         self.seed = seed
-        _load_env_file(PROJECT_DIR / ".env")
+        load_env_file(PROJECT_DIR / ".env")
         resolved_key = api_key or os.getenv("GEMINI_API_KEY")
         if not resolved_key:
             raise QuestionAnalysisError(
@@ -188,43 +173,35 @@ class QuestionAnalyzer:
             f"사용자 질문: {question}"
         )
 
-        last_error: Exception | None = None
-        for attempt in range(self.max_retries):
-            try:
-                response = self.client.models.generate_content(
-                    model=self.model,
-                    contents=context,
-                    config=types.GenerateContentConfig(
-                        system_instruction=SYSTEM_INSTRUCTION,
-                        temperature=0,
-                        seed=self.seed,
-                        response_mime_type="application/json",
-                        response_schema=_GeminiAnalysis,
-                        automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                            disable=True,
-                        ),
+        def call() -> _GeminiAnalysis:
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=context,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_INSTRUCTION,
+                    temperature=0,
+                    seed=self.seed,
+                    response_mime_type="application/json",
+                    response_schema=_GeminiAnalysis,
+                    automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                        disable=True,
                     ),
-                )
-                parsed = response.parsed
-                if parsed is None:
-                    parsed = _GeminiAnalysis.model_validate_json(response.text)
-                elif not isinstance(parsed, _GeminiAnalysis):
-                    parsed = _GeminiAnalysis.model_validate(parsed)
-                return self._to_result(parsed, current_policy_id, question)
-            except errors.APIError as exc:
-                last_error = exc
-                status = getattr(exc, "code", None)
-                retryable = status in {429, 500, 502, 503, 504}
-                if not retryable or attempt == self.max_retries - 1:
-                    break
-                time.sleep(2 ** attempt)
-            except Exception as exc:
-                last_error = exc
-                break
+                ),
+            )
+            parsed = response.parsed
+            if parsed is None:
+                return _GeminiAnalysis.model_validate_json(response.text)
+            if not isinstance(parsed, _GeminiAnalysis):
+                return _GeminiAnalysis.model_validate(parsed)
+            return parsed
 
-        raise QuestionAnalysisError(
-            f"Gemini 질문 분석에 실패했습니다: {last_error}"
-        ) from last_error
+        try:
+            parsed = call_with_retry(call, self.max_retries)
+            return self._to_result(parsed, current_policy_id, question)
+        except Exception as exc:
+            raise QuestionAnalysisError(
+                f"Gemini 질문 분석에 실패했습니다: {exc}"
+            ) from exc
 
     @staticmethod
     def _to_result(
