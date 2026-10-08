@@ -84,4 +84,4 @@ INVALID_API_KEY    키 형식이 틀렸거나 Gemini가 거부한 경우(401/403
 - `relevance_checked: bool` — 상황형 질문의 후보를 LLM으로 다시 판정했으면 true, 판정을 안 했거나 실패했으면 false
 - `low_relevance_ids: list[str]` — 판정에서 "관련도 낮음"으로 본 `policy_id`. 목록의 후보는 응답에 그대로 포함되며 화면에서 접힌다.
 
-상황형 질문(`route == situation_search`)에서만 판정하며, 이때 후보를 범위별 8개까지 판정해 관련 판정을 앞쪽 최대 3개 + 무관 판정을 뒤쪽 최대 3개로 돌려줍니다(그 외에는 이전처럼 범위별 최대 3개). 판정 실패는 오류가 아니라 `relevance_checked=false`입니다. 새 오류 코드는 없습니다.
+상황형 질문(`route == situation_search`)에서만 판정하며, 이때 후보를 범위별 8개까지 판정해 관련 판정을 앞쪽 **최대 8개**(화면이 3개씩 쪽으로 넘겨 봄) + 무관 판정을 뒤쪽 최대 3개로 돌려줍니다(그 외에는 이전처럼 범위별 최대 3개). 판정 실패는 오류가 아니라 `relevance_checked=false`입니다. 새 오류 코드는 없습니다.
