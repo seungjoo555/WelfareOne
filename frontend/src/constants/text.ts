@@ -33,6 +33,9 @@ export const LOW_RELEVANCE_NOTE = "질문과 덜 맞을 수 있는 후보예요.
 
 // 상담 기록(localStorage)
 export const INTERRUPTED_NOTICE = "이 질문은 답변을 받기 전에 페이지가 닫혀 응답이 없어요. 질문을 다시 보내 주세요.";
+export const HISTORY_RENAME_INPUT_LABEL = "상담 제목";
+export const HISTORY_RENAME_HINT = "비우면 첫 질문으로 되돌아가요";
+export const historyRenameLabel = (title: string) => `${title} 상담 제목 수정`;
 export const HISTORY_EMPTY = "아직 저장된 상담이 없어요. 질문을 보내면 여기에 기록돼요.";
 export const HISTORY_PRIVACY = "상담 기록은 이 브라우저에만 저장돼요. 공용 PC에서는 사용 후 삭제해 주세요.";
 export const HISTORY_SAVE_ERRORS = {

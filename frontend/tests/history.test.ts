@@ -219,3 +219,55 @@ test("제목은 첫 질문을 공백 정리 후 30자로 자른다", () => {
   assert.equal(hasUserMessage([{ id: "1", type: "ai_opener" }]), false);
   assert.equal(hasUserMessage([{ id: "1", type: "user_text", text: "a" }]), true);
 });
+
+test("rename: 제목을 바꾸고 목록·본문에 반영하며 순서(updated_at)는 유지한다", () => {
+  const store = createHistoryStore(new FakeStorage(), NS);
+  store.save(conv("a", 100));
+  store.save(conv("b", 200));
+  assert.equal(store.rename("a", "  내 월세   상담  "), "내 월세 상담");
+  assert.equal(store.load("a")?.title, "내 월세 상담");
+  assert.equal(store.load("a")?.title_edited, true);
+  const items = store.list();
+  assert.deepEqual(items.map((i) => i.id), ["b", "a"]); // 순서 그대로
+  assert.equal(items.find((i) => i.id === "a")?.title, "내 월세 상담");
+  assert.equal(items.find((i) => i.id === "a")?.updated_at, 100);
+});
+
+test("rename: 고친 제목은 같은 상담을 다시 저장해도 자동 제목으로 덮어쓰이지 않는다", () => {
+  const store = createHistoryStore(new FakeStorage(), NS);
+  store.save(conv("a", 100));
+  store.rename("a", "내 제목");
+  store.save({ ...conv("a", 300), title: "월세가 부담돼요" }); // 앱이 저장할 때는 자동 제목을 넘긴다
+  assert.equal(store.load("a")?.title, "내 제목");
+  assert.equal(store.list()[0].title, "내 제목");
+  assert.equal(store.list()[0].updated_at, 300); // 새 메시지가 있으면 순서는 올라간다
+});
+
+test("rename: 비우면 자동 제목(첫 질문)으로 되돌리고, 이후 자동 제목이 다시 갱신된다", () => {
+  const store = createHistoryStore(new FakeStorage(), NS);
+  store.save(conv("a", 100));
+  store.rename("a", "내 제목");
+  assert.equal(store.rename("a", "   "), "월세가 부담돼요");
+  assert.equal(store.load("a")?.title_edited, undefined);
+  store.save({ ...conv("a", 200), title: "다른 자동 제목" });
+  assert.equal(store.load("a")?.title, "다른 자동 제목");
+});
+
+test("rename: 최대 40자로 자르고, 없는 상담이나 저장소 없음은 null", () => {
+  const store = createHistoryStore(new FakeStorage(), NS);
+  store.save(conv("a", 100));
+  assert.equal(store.rename("a", "가".repeat(60)), "가".repeat(40));
+  assert.equal(store.rename("none", "제목"), null);
+  assert.equal(createHistoryStore(null, NS).rename("a", "제목"), null);
+});
+
+test("rename: 저장 공간이 모자라면 제목을 바꾸지 않고 null", () => {
+  const probe = new FakeStorage();
+  createHistoryStore(probe, NS).save(conv("a", 100));
+  const size = probe.keys().reduce((sum, k) => sum + k.length + (probe.getItem(k)?.length ?? 0), 0);
+  const storage = new FakeStorage(size); // 이미 가득 찬 저장소
+  const store = createHistoryStore(storage, NS);
+  store.save(conv("a", 100));
+  assert.equal(store.rename("a", "아주 긴 새 제목 ".repeat(3)), null);
+  assert.equal(store.load("a")?.title, "상담 a");
+});

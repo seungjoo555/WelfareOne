@@ -23,6 +23,7 @@ export interface ConversationHistory {
   activeId: string | null;
   saveError: "quota" | "unavailable" | null;
   select: (id: string) => void;
+  rename: (id: string, title: string) => void;
   remove: (id: string) => void;
   clearAll: () => void;
 }
@@ -84,6 +85,13 @@ export function useConversationHistory(state: ConversationState, dispatch: React
     [state.pending, state.conversation_id, dispatch],
   );
 
+  // 상담 제목 수정. 응답 흐름과 무관하므로 응답을 기다리는 중에도 허용한다. 저장하지 못하면 기존 제목을 그대로 둔다.
+  const rename = useCallback((id: string, title: string) => {
+    const result = historyStore.rename(id, title);
+    setSaveError(result === null ? "unavailable" : null);
+    setItems(historyStore.list());
+  }, []);
+
   const remove = useCallback(
     (id: string) => {
       if (state.pending || !window.confirm(CONFIRM_DELETE_ONE)) return;
@@ -102,5 +110,5 @@ export function useConversationHistory(state: ConversationState, dispatch: React
     dispatch({ type: "NEW_CHAT" });
   }, [state.pending, dispatch]);
 
-  return { items, activeId: state.conversation_id, saveError, select, remove, clearAll };
+  return { items, activeId: state.conversation_id, saveError, select, rename, remove, clearAll };
 }

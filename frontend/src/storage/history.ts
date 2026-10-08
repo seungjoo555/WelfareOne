@@ -14,6 +14,7 @@ import type { PolicyCandidate, RegionSelection } from "../types/contract";
 export const MAX_CONVERSATIONS = 30;
 export const MAX_MESSAGES = 200;
 const TITLE_MAX_LENGTH = 30;
+export const CUSTOM_TITLE_MAX_LENGTH = 40; // 사용자가 직접 고친 제목의 최대 길이
 const DEFAULT_TITLE = "새 상담";
 
 export interface StoredPolicy {
@@ -24,6 +25,7 @@ export interface StoredPolicy {
 export interface Conversation {
   id: string;
   title: string;
+  title_edited?: boolean; // 사용자가 직접 고친 제목이면 true(저장할 때 자동 제목으로 덮어쓰지 않는다)
   created_at: number;
   updated_at: number;
   region: RegionSelection;
@@ -36,6 +38,7 @@ export interface Conversation {
 export interface ConversationSummary {
   id: string;
   title: string;
+  title_edited?: boolean;
   updated_at: number;
   region_text: string;
   age: number | null;
@@ -210,11 +213,20 @@ export function createHistoryStore(storage: Storage | null, namespace: string) {
 
   function save(conversation: Conversation): SaveResult {
     if (!storage) return { ok: false, reason: "unavailable" };
-    const stored: Conversation = { ...conversation, messages: slimMessages(conversation.messages) };
+    // 사용자가 고친 제목은 자동 제목(첫 질문)으로 덮어쓰지 않는다.
+    const previous = readJson(convKey(conversation.id));
+    const keepTitle = isConversation(previous) && previous.title_edited === true;
+    const stored: Conversation = {
+      ...conversation,
+      title: keepTitle ? previous.title : conversation.title,
+      ...(keepTitle ? { title_edited: true } : {}),
+      messages: slimMessages(conversation.messages),
+    };
     const payload = JSON.stringify(stored);
     const summary: ConversationSummary = {
       id: stored.id,
       title: stored.title,
+      ...(stored.title_edited ? { title_edited: true } : {}),
       updated_at: stored.updated_at,
       region_text: regionLabel(stored.region),
       age: stored.age,
@@ -249,6 +261,31 @@ export function createHistoryStore(storage: Storage | null, namespace: string) {
     return { ok: false, reason: "quota" };
   }
 
+  // 상담 제목을 바꾼다. 공백을 정리해 최대 CUSTOM_TITLE_MAX_LENGTH자로 자르고, 비우면 자동 제목(첫 질문)으로 되돌린다.
+  // updated_at은 그대로 둬서 목록 순서가 바뀌지 않는다. 성공하면 새 제목, 상담이 없거나 저장할 수 없으면 null.
+  function rename(id: string, title: string): string | null {
+    if (!storage) return null;
+    const raw = readJson(convKey(id));
+    if (!isConversation(raw) || raw.id !== id) return null;
+    const cleaned = title.replace(/\s+/g, " ").trim().slice(0, CUSTOM_TITLE_MAX_LENGTH);
+    const edited = cleaned !== "";
+    const nextTitle = edited ? cleaned : makeTitle(raw.messages);
+    const { title_edited: _previous, ...rest } = raw;
+    const next: Conversation = { ...rest, title: nextTitle, ...(edited ? { title_edited: true } : {}) };
+    try {
+      storage.setItem(convKey(id), JSON.stringify(next));
+      const index = readIndex().map((item) => {
+        if (item.id !== id) return item;
+        const { title_edited: _old, ...summary } = item;
+        return { ...summary, title: nextTitle, ...(edited ? { title_edited: true } : {}) };
+      });
+      writeIndex(index);
+    } catch {
+      return null; // 저장 공간 문제 등: 제목은 그대로 둔다
+    }
+    return nextTitle;
+  }
+
   function clear(): void {
     if (!storage) return;
     const keys: string[] = [];
@@ -275,7 +312,7 @@ export function createHistoryStore(storage: Storage | null, namespace: string) {
     }
   }
 
-  return { list, load, save, remove, clear, getActiveId, setActiveId, namespace };
+  return { list, load, save, rename, remove, clear, getActiveId, setActiveId, namespace };
 }
 
 export type HistoryStore = ReturnType<typeof createHistoryStore>;

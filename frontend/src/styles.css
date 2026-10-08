@@ -145,17 +145,23 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .history-open:disabled { cursor: not-allowed; opacity: 0.6; }
 .history-title { font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history-meta { font-size: 0.75em; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.history-delete {
+.history-edit, .history-delete {
   flex: none; background: none; border: 0; color: var(--muted); cursor: pointer; padding: 6px 8px;
   border-radius: 8px; opacity: 0; font-size: 0.8em;
 }
 .history-item:hover .history-delete, .history-item:focus-within .history-delete, .history-delete:focus-visible { opacity: 1; }
+.history-item:hover .history-edit, .history-item:focus-within .history-edit, .history-edit:focus-visible { opacity: 1; }
+.history-edit:hover { color: var(--accent); }
+.history-rename-input {
+  flex: 1; min-width: 0; margin: 3px 4px; padding: 6px 8px; border: 1px solid var(--accent); border-radius: 8px;
+  background: var(--bg); color: var(--text); font: inherit; font-size: 0.9em;
+}
 .history-delete:hover:not(:disabled) { color: var(--danger); }
 .history-delete:disabled { cursor: not-allowed; }
 .history-empty { font-size: 0.82em; }
 .history-footer { margin-top: auto; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; font-size: 0.78em; }
 .sidebar-bottom { border-top: 1px solid var(--border); padding-top: 12px; display: flex; justify-content: center; }
-@media (hover: none) { .history-delete { opacity: 1; } }
+@media (hover: none) { .history-delete, .history-edit { opacity: 1; } }
 .main { display: flex; flex-direction: column; min-width: 0; height: 100%; }
 .header {
   display: flex; align-items: center; gap: 10px; padding: 10px 16px;
@@ -198,12 +204,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .low-relevance summary { cursor: pointer; color: var(--accent); font-size: 0.9em; }
 .low-relevance-note { font-size: 0.82em; color: var(--muted); margin: 6px 0; }
 .candidate-list { display: grid; gap: 8px; }
-.candidate {
-  text-align: left; display: flex; flex-direction: column; gap: 2px; width: 100%;
-  border: 1px solid var(--border); background: var(--bg); border-radius: 10px; padding: 10px 12px; cursor: pointer;
-}
-.candidate:hover { border-color: var(--accent); }
-.candidate.selected { border-color: var(--accent); background: var(--accent-soft); }
 .candidate-pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 8px; }
 .pager-btn {
   border: 1px solid var(--border); background: var(--bg); color: var(--text); border-radius: 8px;
@@ -212,6 +212,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .pager-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .pager-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .pager-status { font-size: 0.85em; color: var(--muted); min-width: 4.5em; text-align: center; }
+.candidate {
+  text-align: left; display: flex; flex-direction: column; gap: 2px; width: 100%;
+  border: 1px solid var(--border); background: var(--bg); border-radius: 10px; padding: 10px 12px; cursor: pointer;
+}
+.candidate:hover { border-color: var(--accent); }
+.candidate.selected { border-color: var(--accent); background: var(--accent-soft); }
 .candidate-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .candidate-region { color: var(--muted); font-size: 0.85em; }
 .candidate-summary { font-size: 0.9em; }
