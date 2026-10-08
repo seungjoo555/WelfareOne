@@ -70,6 +70,22 @@ class RunSearchTest(unittest.TestCase):
         self.assertIn("local:1", outcome.low_relevance_ids)
         self.assertGreater(search.calls[0][1]["local_top_k"], DEFAULT_TOP_K)
 
+    def test_judge_returns_all_relevant_candidates_for_paging(self):
+        # 관련 판정 후보가 3개를 넘어도 풀 전체를 내려준다(화면이 3개씩 쪽으로 넘겨 본다). 접힘은 최대 3개.
+        search = FakeSearch(local=8, national=2)
+        judge = FakeJudge(relevant_ids={f"local:{i}" for i in range(6)} | {"national:0"})
+        outcome = run_search(analysis(), search, REGION, None, "q", judge)
+        relevant_local = [p.policy_id for p in outcome.local_policies if p.policy_id not in outcome.low_relevance_ids]
+        self.assertEqual(relevant_local, [f"local:{i}" for i in range(6)])
+        self.assertEqual(len(outcome.local_policies), 8)  # 관련 6 + 접힘 2
+        self.assertEqual([p.policy_id for p in outcome.national_policies][:1], ["national:0"])
+
+    def test_judge_with_no_relevant_candidates_still_folds_at_most_three(self):
+        search = FakeSearch(local=8)
+        outcome = run_search(analysis(), search, REGION, None, "q", FakeJudge(relevant_ids=set()))
+        self.assertEqual(len(outcome.local_policies), 3)
+        self.assertEqual(len(outcome.low_relevance_ids), 3)
+
     def test_judge_failure_falls_back_to_distance_top_k(self):
         search = FakeSearch(local=6, national=6)
         with self.assertLogs("welfareone.api", level="WARNING"):

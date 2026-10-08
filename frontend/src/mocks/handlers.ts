@@ -17,6 +17,7 @@ import type {
 //   "근거없음" → (정책 선택 후) grounded=false 답변
 //   "관련낮음" → 관련도 낮은 후보(거리 0.50 초과)가 "더 보기"로 접히는지 확인
 //   "재판정"   → 서버가 LLM으로 판정한 응답(relevance_checked)에서 판정 결과대로 접히는지 확인
+//   "더보기"   → 지자체 8개·중앙부처 5개: 3개씩 "다음/이전" 쪽 넘김 확인
 //   "키없음"   → 401 API_KEY_REQUIRED (API 키 입력 창이 열리는지 확인)
 //   "키오류"   → 401 INVALID_API_KEY
 
@@ -104,6 +105,29 @@ export const handlers = [
         national_policies: [],
       };
       return HttpResponse.json(judged);
+    }
+    if (body.question.includes("더보기")) {
+      // 관련 판정 후보가 3개를 넘는 응답: 그룹마다 3개씩 쪽으로 넘겨 보는지 확인한다(우선순위 순서 = 배열 순서)
+      const many = (prefix: string, count: number, scope: PolicyCandidate["scope"], region: string, agency: string) =>
+        Array.from({ length: count }, (_, i) => {
+          const title = `[예시] ${prefix} 정책 ${i + 1}순위`;
+          return candidate({
+            policy_id: `${prefix === "지역" ? "local" : "national"}:MOCKPAGE${i + 1}`,
+            title,
+            region_text: region,
+            scope,
+            distance: 0.2 + i * 0.02,
+            summary: summaryText(title, agency, `${i + 1}번째로 관련도가 높은 후보입니다. (mock 데이터)`),
+          });
+        });
+      const paged: SearchResponse = {
+        analysis,
+        relevance_checked: true,
+        low_relevance_ids: [],
+        local_policies: many("지역", 8, "시군구", regionText, regionText),
+        national_policies: many("중앙", 5, "중앙부처", "", "보건복지부"),
+      };
+      return HttpResponse.json(paged);
     }
     if (body.question.includes("관련낮음")) {
       // 관련도가 낮은(거리 0.50 초과) 후보가 접히는지 확인하는 케이스

@@ -25,6 +25,10 @@ export const EMPTY_LOCAL_BUT_NATIONAL_TEXT =
 export const EMPTY_NATIONAL_BUT_LOCAL_TEXT = "관련도가 높은 중앙부처 정책은 찾지 못했어요. 지역 정책을 확인해 보세요.";
 // 상황형 질문에서 거리가 먼 후보는 접어 두고 사용자가 펼쳐서 볼 수 있게 한다
 export const lowRelevanceSummary = (count: number) => `관련도가 낮은 후보 ${count}건 더 보기`;
+export const PAGER_PREV = "이전";
+export const PAGER_NEXT = "다음";
+export const pagerStatus = (page: number, total: number) => `${page} / ${total}쪽`;
+export const pagerLabel = (title: string) => `${title} 쪽 이동`;
 export const LOW_RELEVANCE_NOTE = "질문과 덜 맞을 수 있는 후보예요. 지원 대상과 조건을 꼭 확인해 주세요.";
 
 // 상담 기록(localStorage)

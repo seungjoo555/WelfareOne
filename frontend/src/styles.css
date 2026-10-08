@@ -204,6 +204,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .candidate:hover { border-color: var(--accent); }
 .candidate.selected { border-color: var(--accent); background: var(--accent-soft); }
+.candidate-pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 8px; }
+.pager-btn {
+  border: 1px solid var(--border); background: var(--bg); color: var(--text); border-radius: 8px;
+  padding: 5px 14px; cursor: pointer; font-size: 0.88em;
+}
+.pager-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.pager-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.pager-status { font-size: 0.85em; color: var(--muted); min-width: 4.5em; text-align: center; }
 .candidate-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .candidate-region { color: var(--muted); font-size: 0.85em; }
 .candidate-summary { font-size: 0.9em; }

@@ -58,7 +58,8 @@ def run_search(
         return SearchOutcome(result.local_policies, result.national_policies)
 
     try:
-        outcome = rerank_with_judge(judge, question, analysis.search_query, result, age)
+        # 관련 판정 후보는 풀 전체(범위별 최대 POOL_PER_SCOPE개)를 내려준다. 화면이 3개씩 다음/이전으로 넘겨 본다.
+        outcome = rerank_with_judge(judge, question, analysis.search_query, result, age, show=POOL_PER_SCOPE)
     except Exception as exc:  # noqa: BLE001 - 판정은 부가 단계: 실패하면 거리 기반 결과로 대신한다
         # 질문·키·응답 본문은 남기지 않고 오류 종류만 기록한다
         logger.warning("relevance judge failed (%s); falling back to distance ranking", type(exc).__name__)

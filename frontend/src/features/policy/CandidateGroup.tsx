@@ -1,5 +1,15 @@
-import { EMPTY_GROUP_TEXT, LOW_RELEVANCE_NOTE, lowRelevanceSummary } from "../../constants/text";
+import { useState } from "react";
+import {
+  EMPTY_GROUP_TEXT,
+  LOW_RELEVANCE_NOTE,
+  PAGER_NEXT,
+  PAGER_PREV,
+  lowRelevanceSummary,
+  pagerLabel,
+  pagerStatus,
+} from "../../constants/text";
 import type { PolicyCandidate } from "../../types/contract";
+import { clampPage, needsPager, pageCount, pageSlice } from "../../utils/paging";
 import { splitByRelevance } from "../../utils/relevance";
 import { CandidateCard } from "./CandidateCard";
 
@@ -24,6 +34,10 @@ export function CandidateGroup({
   lowRelevanceIds = null,
 }: Props) {
   const { confident, lowRelevance } = splitByRelevance(policies, foldLowRelevance, lowRelevanceIds);
+  // 보이는 후보는 우선순위 순서대로 3개씩 쪽을 넘겨 본다. 지자체/중앙부처 그룹마다 쪽을 따로 관리한다.
+  const [requestedPage, setPage] = useState(0);
+  const page = clampPage(requestedPage, confident.length);
+  const pages = pageCount(confident.length);
 
   const cards = (list: PolicyCandidate[]) => (
     <div className="candidate-list">
@@ -41,7 +55,20 @@ export function CandidateGroup({
   return (
     <section className="candidate-group" aria-label={title}>
       <h3>{title}</h3>
-      {confident.length === 0 ? <p className="muted">{emptyText}</p> : cards(confident)}
+      {confident.length === 0 ? <p className="muted">{emptyText}</p> : cards(pageSlice(confident, page))}
+      {needsPager(confident.length) && (
+        <div className="candidate-pager" role="group" aria-label={pagerLabel(title)}>
+          <button type="button" className="pager-btn" disabled={page === 0} onClick={() => setPage(page - 1)}>
+            {PAGER_PREV}
+          </button>
+          <span className="pager-status" aria-live="polite">
+            {pagerStatus(page + 1, pages)}
+          </span>
+          <button type="button" className="pager-btn" disabled={page >= pages - 1} onClick={() => setPage(page + 1)}>
+            {PAGER_NEXT}
+          </button>
+        </div>
+      )}
       {lowRelevance.length > 0 && (
         <details className="low-relevance">
           <summary>{lowRelevanceSummary(lowRelevance.length)}</summary>
