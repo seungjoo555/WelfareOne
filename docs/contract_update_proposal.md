@@ -84,4 +84,12 @@ INVALID_API_KEY    키 형식이 틀렸거나 Gemini가 거부한 경우(401/403
 - `relevance_checked: bool` — 상황형 질문의 후보를 LLM으로 다시 판정했으면 true, 판정을 안 했거나 실패했으면 false
 - `low_relevance_ids: list[str]` — 판정에서 "관련도 낮음"으로 본 `policy_id`. 목록의 후보는 응답에 그대로 포함되며 화면에서 접힌다.
 
-상황형 질문(`route == situation_search`)에서만 판정하며, 이때 후보를 범위별 8개까지 판정해 관련 판정을 앞쪽 **최대 8개**(화면이 3개씩 쪽으로 넘겨 봄) + 무관 판정을 뒤쪽 최대 3개로 돌려줍니다(그 외에는 이전처럼 범위별 최대 3개). 판정 실패는 오류가 아니라 `relevance_checked=false`입니다. 새 오류 코드는 없습니다.
+상황형 질문(`route == situation_search`)에서만 판정하며, 이때 후보를 범위별 12개까지 판정해 **풀 전체**를 관련 판정 → 무관 판정(`low_relevance_ids`) 순으로 돌려줍니다(화면이 3개씩 쪽으로 넘겨 봄. 그 외 경로는 이전처럼 범위별 최대 3개). 판정 실패는 오류가 아니라 거리순 후보 전체와 `relevance_checked=false`입니다. 새 오류 코드는 없습니다.
+
+### 4-3. 17장·11장 — 자주 묻는 질문 버튼(`/ask`의 `intent`)과 질문 유형별 답변 구성 (제안)
+
+화면에서 정책을 선택하면 "지원 대상 / 지원 내용·금액 / 신청 방법 / 신청 기간 / 필요 서류 / 문의처" 버튼이 나옵니다. 기존 계약은 그대로 두고 **선택 필드만 추가**합니다.
+
+- `POST /policies/{policy_id}/ask` 요청에 선택 필드 `intent` 추가. 허용값은 계약서 8장 intent 중 `eligibility`, `benefit`, `application`, `administrative`, `required_documents`, `contact`. 값이 있으면 질문 분석(Gemini)을 **건너뛰고** `route=current_policy_question`, `intents=[intent]`로 처리하며 `requested_sections`는 기존 규칙(`INTENT_SECTIONS`)으로 만든다. 값이 없으면 기존과 동일. 허용값 밖이면 422 `INVALID_REQUEST`.
+- `generate_answer(question, policy_id, contexts, requested_sections=None, policy_title=None, intents=None)`: 선택 인자 `intents` 추가. 질문 유형별로 사람들이 보통 알고 싶어 하는 항목 순서(예: 지원 대상 = 누가 대상인가 → 제외·우선 대상 → 신청 전 확인할 점)를 프롬프트에 안내해 답변을 소제목+불릿으로 구성한다. 직접 입력한 질문도 분석기가 정한 `intents`로 같은 구성을 쓴다. 원문에 없는 항목은 지어내지 않고 한 줄로 묶어 "확인되지 않습니다"로 안내한다.
+- 효과(실측, 1개 정책): 버튼 질문 응답 약 1.3~2.6초, 직접 입력(분석 약 1.4초 + 답변 약 1.8초 = 약 3.2초)보다 빠르다.
