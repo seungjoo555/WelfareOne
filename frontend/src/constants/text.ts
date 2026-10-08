@@ -19,6 +19,7 @@ export const ERROR_MESSAGES: Record<AppErrorCode, string> = {
 export const SERVICE_NAME = "WelfareOne";
 
 // 후보 그룹이 비었을 때의 안내(지자체와 중앙부처는 따로 검색하므로 한쪽만 비는 경우가 흔하다)
+export const EMPTY_RESULT_HINT = "필요한 지원을 함께 적으면 잘 찾아요. 예: '자격증 취득 지원', '월세 지원', '교통비 지원'";
 export const EMPTY_GROUP_TEXT = "관련도가 높은 정책을 찾지 못했어요.";
 export const EMPTY_LOCAL_BUT_NATIONAL_TEXT =
   "선택한 지역에서는 관련도가 높은 정책을 찾지 못했어요. 전국 대상인 중앙부처 정책을 확인해 보세요.";

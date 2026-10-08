@@ -1,6 +1,7 @@
 import {
   EMPTY_LOCAL_BUT_NATIONAL_TEXT,
   EMPTY_NATIONAL_BUT_LOCAL_TEXT,
+  EMPTY_RESULT_HINT,
   ERROR_MESSAGES,
   INTERRUPTED_NOTICE,
   OPENER_TEXT,
@@ -81,7 +82,10 @@ export function MessageItem({ message, actions }: { message: Message; actions: M
               ` · ${message.analysis.intents.map((i) => INTENT_LABELS[i]).join(", ")}`}
           </p>
           {empty ? (
-            <p>조건에 맞는 정책 후보를 찾지 못했어요. 표현을 바꿔 다시 질문해 보세요.</p>
+            <>
+              <p>조건에 맞는 정책 후보를 찾지 못했어요. 표현을 바꿔 다시 질문해 보세요.</p>
+              <p className="muted">{EMPTY_RESULT_HINT}</p>
+            </>
           ) : (
             <>
               <CandidateGroup

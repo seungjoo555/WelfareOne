@@ -11,6 +11,10 @@
 
 # 상황형 질문의 거리 하한. 이 안에서도 SITUATION_CONFIDENT_DISTANCE보다 먼 후보는 화면에서 접어 둔다.
 SITUATION_MAX_DISTANCE = 0.55
+# 상황형 질문의 후보가 하한 때문에 전부 사라졌을 때만 쓰는 완화된 하한(기본 하한과 같은 값).
+# 2026-10-08 측정: "자격증관련 정책 알려줘"의 1위가 0.56이라 하한 0.55에서 빈 결과였고, 0.60에서는 정상 결과가 나왔다.
+# 무의미 질문(날씨·피자 맛집·zzzzqqq)은 0.60에서도 빈 결과였다.
+SITUATION_RESCUE_MAX_DISTANCE = 0.60
 # 시군구/광역 가산점을 곱하는 비율. 0이면 지자체 후보를 거리(와 키워드)만으로 정렬한다.
 SITUATION_REGION_BONUS_SCALE = 0.0
 # 프런트 `src/utils/relevance.ts`의 LOW_RELEVANCE_DISTANCE와 같은 값이어야 한다(기본으로 보여 줄 관련도 기준).

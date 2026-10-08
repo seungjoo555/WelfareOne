@@ -8,7 +8,7 @@ from app.env import load_env_file
 from app.gemini_retry import call_with_retry
 from app.models import PolicyCandidate, PolicySearchResult, QuestionAnalysis, RegionSelection
 from app.relevance_judge import POOL_PER_SCOPE
-from app.search_pipeline import run_search
+from app.search_pipeline import run_search, search_queries
 
 
 def candidate(policy_id: str, scope: str = "시군구") -> PolicyCandidate:
@@ -104,6 +104,104 @@ class RunSearchTest(unittest.TestCase):
         outcome = run_search(analysis("specific_policy"), search, REGION, None, "q", FakeJudge(error=RuntimeError()))
         self.assertFalse(outcome.relevance_checked)
         self.assertEqual(len(outcome.local_policies), 2)
+
+
+def scored(policy_id: str, score: float, scope: str = "시군구") -> PolicyCandidate:
+    return PolicyCandidate(
+        policy_id=policy_id, title=policy_id, region_text="", score=score, distance=1 - score,
+        scope=scope, summary="", metadata={}, reasons=[],
+    )
+
+
+class ScriptedSearch:
+    """질문 문장과 하한(max_distance)에 따라 다른 결과를 돌려주는 가짜 검색."""
+
+    def __init__(self, by_query=None, limit_hides_all=False):
+        self.by_query = by_query or {}
+        self.limit_hides_all = limit_hides_all  # True면 기본 하한(0.55)에서는 빈 결과, 완화하면 결과가 나온다
+        self.calls = []
+
+    def search_policies(self, question, region, **kwargs):
+        self.calls.append((question, kwargs))
+        if self.limit_hides_all and kwargs.get("max_distance", 0.60) < 0.60:
+            return PolicySearchResult()
+        return self.by_query.get(question, PolicySearchResult())
+
+
+class SearchQueriesTest(unittest.TestCase):
+    def test_situation_question_searches_with_analyzer_query_and_raw_question(self):
+        self.assertEqual(search_queries(analysis(), "월세가 부담돼요"), ["월세 지원", "월세가 부담돼요"])
+
+    def test_raw_question_is_whitespace_normalized_and_deduplicated(self):
+        self.assertEqual(search_queries(analysis(), "월세   지원"), ["월세 지원"])
+
+    def test_other_routes_use_only_the_analyzer_query(self):
+        self.assertEqual(search_queries(analysis("specific_policy"), "청년월세 지원사업 알려줘"), ["월세 지원"])
+
+    def test_overlong_raw_question_is_not_added(self):
+        self.assertEqual(search_queries(analysis(), "가" * 201), ["월세 지원"])
+
+
+class MultiQueryAndRescueTest(unittest.TestCase):
+    def test_results_of_both_queries_are_merged_by_best_score_per_policy(self):
+        search = ScriptedSearch({
+            "월세 지원": PolicySearchResult([scored("local:A", 0.50), scored("local:B", 0.40)], []),
+            "월세가 부담돼요": PolicySearchResult([scored("local:A", 0.60), scored("local:C", 0.55)], [scored("national:N", 0.5, "중앙부처")]),
+        })
+        outcome = run_search(analysis(), search, REGION, None, "월세가 부담돼요")
+        self.assertEqual([p.policy_id for p in outcome.local_policies], ["local:A", "local:C", "local:B"])
+        self.assertEqual(outcome.local_policies[0].score, 0.60)  # 같은 정책은 점수가 높은 쪽
+        self.assertEqual([p.policy_id for p in outcome.national_policies], ["national:N"])
+        self.assertEqual(len(search.calls), 2)
+
+    def test_merge_keeps_scopes_separate_and_respects_top_k(self):
+        many = PolicySearchResult([scored(f"local:{i}", 1 - i / 100) for i in range(5)], [])
+        search = ScriptedSearch({"월세 지원": many, "월세가 부담돼요": many})
+        outcome = run_search(analysis(), search, REGION, None, "월세가 부담돼요")
+        self.assertEqual(len(outcome.local_policies), 3)  # 판정을 안 쓰면 범위별 기본 3개
+        self.assertEqual(outcome.national_policies, [])
+
+    def test_empty_result_is_rescued_once_with_relaxed_limit(self):
+        found = PolicySearchResult([scored("local:A", 0.44)], [])
+        search = ScriptedSearch({"월세 지원": found}, limit_hides_all=True)
+        # 기본 하한 호출은 빈 결과 → 완화(0.60) 호출에서 결과가 나온다
+        search.calls = []
+        outcome = run_search(analysis(), search, REGION, None, "월세가 부담돼요")
+        self.assertTrue(outcome.rescued)
+        self.assertEqual([p.policy_id for p in outcome.local_policies], ["local:A"])
+        limits = [kwargs.get("max_distance") for _, kwargs in search.calls]
+        self.assertEqual(limits[:2], [0.55, 0.55])  # 첫 시도(두 검색어) — 상황형 하한
+        self.assertEqual(limits[2:], [0.60, 0.60])  # 완화한 두 번째 시도
+        self.assertEqual(len(limits), 4)  # 더 이상 반복하지 않는다
+
+    def test_rescue_runs_for_judged_searches_and_the_judge_decides(self):
+        found = PolicySearchResult([scored("local:A", 0.44), scored("local:B", 0.40)], [])
+        search = ScriptedSearch({"월세 지원": found}, limit_hides_all=True)
+        outcome = run_search(analysis(), search, REGION, None, "월세가 부담돼요", FakeJudge(relevant_ids={"local:B"}))
+        self.assertTrue(outcome.rescued)
+        self.assertTrue(outcome.relevance_checked)
+        self.assertEqual([p.policy_id for p in outcome.local_policies], ["local:B", "local:A"])
+        self.assertEqual(outcome.low_relevance_ids, ["local:A"])
+
+    def test_no_rescue_when_nothing_is_found_even_with_the_relaxed_limit(self):
+        search = ScriptedSearch({})
+        outcome = run_search(analysis(), search, REGION, None, "오늘 날씨 어때", FakeJudge())
+        self.assertFalse(outcome.rescued)
+        self.assertEqual((outcome.local_policies, outcome.national_policies), ([], []))
+        self.assertEqual(outcome.low_relevance_ids, [])  # 후보가 없으면 판정할 것도 없다(실제 판정기는 빈 목록에 Gemini를 부르지 않는다)
+
+    def test_no_rescue_for_other_routes(self):
+        search = ScriptedSearch({}, limit_hides_all=True)
+        outcome = run_search(analysis("specific_policy"), search, REGION, None, "청년월세 지원사업")
+        self.assertFalse(outcome.rescued)
+        self.assertEqual(len(search.calls), 1)
+
+    def test_no_rescue_when_the_first_search_already_has_results(self):
+        found = PolicySearchResult([scored("local:A", 0.6)], [])
+        search = ScriptedSearch({"월세 지원": found})
+        outcome = run_search(analysis(), search, REGION, None, "월세가 부담돼요")
+        self.assertFalse(outcome.rescued)
+        self.assertEqual(len(search.calls), 2)  # 두 검색어만, 완화 재검색 없음
 
 
 class GeminiRetryTest(unittest.TestCase):
