@@ -83,6 +83,13 @@ class DistanceLimitTest(unittest.TestCase):
         result = service.search_policies("오늘 날씨 어때", REGION, max_distance=None)
         self.assertEqual(len(result.local_policies), 1)
 
+    def test_soft_keywords_do_not_override_vector_order(self):
+        service = make_service([
+            ("local:A", "출산 진료비 지원", "local", 0.20),
+            ("local:B", "산후조리 지원", "local", 0.22),
+        ])
+        result = service.search_policies("도움이 필요해요", REGION)
+        self.assertEqual(result.local_policies[0].policy_id, "local:A")
 
 if __name__ == "__main__":
     unittest.main()

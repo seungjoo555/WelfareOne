@@ -62,6 +62,11 @@ export function MessageItem({ message, actions }: { message: Message; actions: M
             {message.analysis.intents.length > 0 &&
               ` · ${message.analysis.intents.map((i) => INTENT_LABELS[i]).join(", ")}`}
           </p>
+          {message.validation_status === "fallback" && (
+            <p className="warning" role="status">
+              관련성 검증을 완료하지 못해 유사도가 높은 정책을 보여 드립니다.
+            </p>
+          )}
           {empty ? (
             <p>조건에 맞는 정책 후보를 찾지 못했어요. 표현을 바꿔 다시 질문해 보세요.</p>
           ) : (

@@ -7,12 +7,13 @@ from .models import PolicyCandidate, PolicySearchResult, RegionSelection
 from .repository import PolicyRepository
 
 
-# 이 거리보다 먼 후보는 관련 정책이 아니라고 본다(계약서 9장 규칙 5).
-# 평가 질문 280개 실측: 정답 정책 거리 p95 0.51·최대 0.675, 무의미 질문 최상위 거리 0.64~0.88.
-# 0.60이면 top3 정답 99.2% 보존, 무의미 질문 7개는 모두 빈 결과. 모델·DB를 바꾸면 다시 측정한다.
-MAX_DISTANCE = 0.60
-# 정책명 단어가 모두 질문에 들어 있으면(_title_bonus 최대값) 거리와 무관하게 남긴다(규칙 6).
-TITLE_EXEMPT_BONUS = 0.5
+# 리랭커에 정답 후보를 넓게 넘기기 위한 1차 검색 안전선이다.
+# 평가 질문의 정답 최대 거리(약 0.675)를 보존하도록 기존 0.60에서 완화했다.
+MAX_DISTANCE = 0.70
+CANDIDATE_POOL_SIZE = 30
+# 특정 정책명을 직접 입력한 경우에는 거리만으로 정책을 버리지 않는다.
+TITLE_EXEMPT_RATIO = 1.0
+_GENERIC_TITLE_WORDS = {"지원", "사업", "정책", "서비스", "관련", "청년", "및"}
 
 
 def _where(*conditions: dict) -> dict:
@@ -20,14 +21,14 @@ def _where(*conditions: dict) -> dict:
     return valid[0] if len(valid) == 1 else {"$and": valid}
 
 
-def _title_bonus(title: str, question: str) -> tuple[float, list[str]]:
-    generic = {"지원", "사업", "정책", "서비스", "관련", "청년", "및"}
+def _title_match_ratio(title: str, question: str) -> tuple[float, list[str]]:
+    """정책명 직접 언급 여부만 판정한다. 최종 순위 가산점으로는 사용하지 않는다."""
     words = [
         word for word in re.findall(r"[가-힣A-Za-z0-9]+", title)
-        if len(word) >= 2 and word not in generic
+        if len(word) >= 2 and word not in _GENERIC_TITLE_WORDS
     ]
     matched = [word for word in words if word in question]
-    return (0.5 * len(matched) / len(words) if words else 0.0), matched
+    return (len(matched) / len(words) if words else 0.0), matched
 
 
 def _age_matches(metadata: dict, age: int | None) -> bool:
@@ -52,7 +53,6 @@ class PolicySearchService:
         if region.level2:
             scopes.append({
                 "name": "시군구",
-                "bonus": 0.60,
                 "where": _where(
                     {"section": {"$eq": "candidate_summary"}},
                     {"source": {"$eq": "local"}},
@@ -62,7 +62,6 @@ class PolicySearchService:
             })
             scopes.append({
                 "name": "광역",
-                "bonus": 0.35,
                 "where": _where(
                     {"section": {"$eq": "candidate_summary"}},
                     {"source": {"$eq": "local"}},
@@ -73,7 +72,6 @@ class PolicySearchService:
         else:
             scopes.append({
                 "name": "시도",
-                "bonus": 0.35,
                 "where": _where(
                     {"section": {"$eq": "candidate_summary"}},
                     {"source": {"$eq": "local"}},
@@ -82,7 +80,6 @@ class PolicySearchService:
             })
         scopes.append({
             "name": "중앙부처",
-            "bonus": 0.10,
             "where": _where(
                 {"section": {"$eq": "candidate_summary"}},
                 {"source": {"$eq": "national"}},
@@ -95,8 +92,8 @@ class PolicySearchService:
         question: str,
         region: RegionSelection,
         age: int | None = None,
-        local_top_k: int = 3,
-        national_top_k: int = 3,
+        local_top_k: int = CANDIDATE_POOL_SIZE,
+        national_top_k: int = CANDIDATE_POOL_SIZE,
         per_scope: int = 30,
         max_distance: float | None = MAX_DISTANCE,
     ) -> PolicySearchResult:
@@ -120,22 +117,24 @@ class PolicySearchService:
                     continue
                 policy_id = str(metadata.get("policy_id", ""))
                 title = str(metadata.get("title", ""))
-                if not policy_id or not title:
+                if (
+                    not policy_id
+                    or not title
+                ):
                     continue
                 semantic_score = 1.0 - float(distance)
-                bonus, matched = _title_bonus(title, question)
+                title_match_ratio, matched = _title_match_ratio(title, question)
                 if (
                     max_distance is not None
                     and float(distance) > max_distance
-                    and bonus < TITLE_EXEMPT_BONUS
+                    and title_match_ratio < TITLE_EXEMPT_RATIO
                 ):
                     continue
-                score = semantic_score + float(scope["bonus"]) + bonus
                 item = PolicyCandidate(
                     policy_id=policy_id,
                     title=title,
                     region_text=str(metadata.get("region_text", "")),
-                    score=score,
+                    score=semantic_score,
                     distance=float(distance),
                     scope=str(scope["name"]),
                     summary=document,
@@ -143,7 +142,7 @@ class PolicySearchService:
                     reasons=[
                         f"벡터 유사도 {semantic_score:.3f}",
                         f"검색 범위 {scope['name']}",
-                        *(["정책명 단어 " + ", ".join(matched)] if matched else []),
+                        *(["정책명 직접 언급 " + ", ".join(matched)] if matched else []),
                     ],
                 )
                 previous = candidates.get(policy_id)
@@ -151,14 +150,16 @@ class PolicySearchService:
                     candidates[policy_id] = item
 
         ranked = sorted(candidates.values(), key=lambda item: -item.score)
-        local_policies = [
+        local_ranked = [
             item for item in ranked
             if item.metadata.get("source") == "local"
-        ][:local_top_k]
-        national_policies = [
+        ]
+        national_ranked = [
             item for item in ranked
             if item.metadata.get("source") == "national"
-        ][:national_top_k]
+        ]
+        local_policies = local_ranked[:local_top_k]
+        national_policies = national_ranked[:national_top_k]
         return PolicySearchResult(
             local_policies=local_policies,
             national_policies=national_policies,

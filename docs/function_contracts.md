@@ -252,8 +252,14 @@ class QuestionAnalysis:
     intents: list[str]
     requested_sections: list[str]
     include_keywords: list[str]
-    exclude_keywords: list[str]
+    exclusions: list[QuestionExclusion]
     confidence: float
+
+@dataclass
+class QuestionExclusion:
+    concept: str
+    evidence: str
+    explicit: bool = True
 ```
 
 출력 예시:
@@ -267,7 +273,13 @@ class QuestionAnalysis:
   "intents": ["policy_search"],
   "requested_sections": ["candidate_summary"],
   "include_keywords": ["산후조리", "산모 회복"],
-  "exclude_keywords": ["출산 진료비", "분만 병원비"],
+  "exclusions": [
+    {
+      "concept": "대출",
+      "evidence": "대출 말고",
+      "explicit": true
+    }
+  ],
   "confidence": 0.96
 }
 ```
@@ -282,6 +294,7 @@ class QuestionAnalysis:
 6. `intent`는 대표 의도이며 `intents`의 첫 번째 값과 같아야 한다.
 7. `intents`는 최대 3개이며, 같은 정책에 대한 복수 질문을 담는다.
 8. `requested_sections`는 Gemini가 아니라 코드가 `intents`를 기준으로 생성한다.
+9. 제외 조건은 Gemini가 구조화하되, `evidence`가 원문에 실제로 존재하고 `explicit=true`인 항목만 사용한다.
 
 ## 9. 정책 검색 계약(구현됨)
 
@@ -292,13 +305,21 @@ search_policies(
     question: str,
     region: RegionSelection,
     age: int | None = None,
-    local_top_k: int = 3,
-    national_top_k: int = 3,
+    local_top_k: int = 30,
+    national_top_k: int = 30,
     per_scope: int = 30,
 ) -> PolicySearchResult
 ```
 
-Gemini 질문 분석을 연결한 뒤에는 `QuestionAnalysis.search_query`를 `question` 인자로 전달한다. `include_keywords`와 `exclude_keywords`를 이용한 재정렬은 후속 구현 항목이다.
+Gemini 질문 분석을 연결한 뒤에는 지역명만 제거한 `QuestionAnalysis.search_query`를 `question` 인자로 전달한다. 벡터 검색은 지역·나이·중복·거리 조건을 적용하여 지자체와 중앙부처 후보를 각각 최대 30개까지 확보한다. 제외 조건으로 후보를 미리 삭제하지 않는다.
+
+검색 결과는 다음 단계로 처리한다.
+
+1. 리랭커가 전체 후보의 순서만 다시 매긴다. 리랭커 점수 임계값으로 삭제하지 않는다.
+2. 지자체 상위 10개와 중앙부처 상위 10개를 선택한다.
+3. Gemini가 한 번의 요청으로 모든 후보를 `direct`, `conditional`, `indirect`, `unrelated` 중 하나로 판정한다.
+4. `unrelated`만 제거하고 나머지는 관련성 등급과 리랭커 순서로 정렬한다.
+5. Gemini 검증이 실패하면 리랭커 결과를 그대로 반환하고 `validation_status="fallback"`으로 표시한다.
 
 ### 출력 모델
 
@@ -604,17 +625,33 @@ LangGraph 노드는 기존 서비스 함수를 호출해야 하며 검색·판�
 ```python
 def search_policy_node(state):
     result = search_service.search_policies(
-        search_query=state.search_query,
+        question=state.retrieval_query,
         region=state.region,
         age=state.age,
-        include_keywords=state.include_keywords,
-        exclude_keywords=state.exclude_keywords,
     )
     return {
         "local_candidates": result.local_policies,
         "national_candidates": result.national_policies,
     }
 ```
+
+권장 노드 구성:
+
+```text
+analyze_question
+  -> vector_search
+  -> rerank_candidates
+  -> validate_relevance
+  -> finalize_candidates
+```
+
+- `analyze_question`: `QuestionAnalyzer.analyze_question()` 호출
+- `vector_search`: `SearchService.search_policies()` 호출
+- `rerank_candidates`: `RerankerService.rerank()` 호출 후 범위별 상위 10개 선택
+- `validate_relevance`: `RelevanceService.validate_candidates()`를 한 번 호출
+- `finalize_candidates`: `unrelated` 제거, 등급 우선 정렬, 실패 시 fallback 상태 기록
+
+각 서비스는 대화 상태를 내부에 저장하지 않는다. LangGraph 상태에는 분석 결과, 검색 후보, 리랭킹 후보, 검증 결과와 `validation_status`만 담는다.
 
 판단 역할:
 
@@ -635,6 +672,10 @@ def search_policy_node(state):
 | POST | `/sessions/{session_id}/eligibility` | 자격 확인 진행 |
 
 API 성공 응답은 구조화된 JSON으로 반환한다. 사용자에게 보여줄 한국어 문구만 반환하지 않는다.
+
+`POST /policies/search`는 후보마다 `relevance`와 `relevance_reason`을 반환한다. 응답의
+`validation_status`는 Gemini 검증 성공 시 `verified`, 검증 실패 후 리랭커 결과를 사용하면
+`fallback`이다. 프론트엔드는 `fallback`일 때 검증 미완료 안내를 표시한다.
 
 오류 응답 기본 형식:
 

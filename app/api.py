@@ -17,7 +17,7 @@ import logging
 import os
 import re
 from contextlib import asynccontextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Annotated, Any, Callable, TypeVar
 
 from fastapi import FastAPI, Request
@@ -27,8 +27,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StringConstraints
 
 from .answer_service import AnswerGenerationError
+from .config import VALIDATION_LOCAL_LIMIT, VALIDATION_NATIONAL_LIMIT
 from .models import PolicySection, RegionSelection
 from .question_analyzer import QuestionAnalysisError
+from .relevance_service import RelevanceValidationError
 
 logger = logging.getLogger("welfareone.api")
 T = TypeVar("T")
@@ -54,8 +56,11 @@ class Services:
     analyzer: Any | None  # 서버 키로 만든 QuestionAnalyzer. 서버 키 폴백을 끄면 None
     answers: Any | None  # 서버 키로 만든 AnswerService. 서버 키 폴백을 끄면 None
     regions: dict[str, list[str]]  # DB를 다시 적재하기 전까지 바뀌지 않으므로 시작 시 한 번만 조회
+    reranker: Any | None = None  # RerankerService. 테스트에서는 None 또는 가짜 객체
+    relevance: Any | None = None  # RelevanceService. 사용자 키 폴백이 꺼지면 None
     analyzer_factory: Callable[[str], Any] | None = None  # 사용자 키 -> QuestionAnalyzer
     answers_factory: Callable[[str], Any] | None = None  # 사용자 키 -> AnswerService
+    relevance_factory: Callable[[str], Any] | None = None  # 사용자 키 -> RelevanceService
 
 
 def build_services() -> Services:
@@ -63,6 +68,8 @@ def build_services() -> Services:
     from .answer_service import AnswerService
     from .config import PROJECT_DIR
     from .question_analyzer import QuestionAnalyzer, _load_env_file
+    from .relevance_service import RelevanceService
+    from .reranker_service import RerankerService
     from .repository import PolicyRepository
     from .search_service import PolicySearchService
 
@@ -77,8 +84,11 @@ def build_services() -> Services:
         analyzer=QuestionAnalyzer() if allow_server_key else None,
         answers=AnswerService() if allow_server_key else None,
         regions=repository.list_regions(),
+        reranker=RerankerService(),
+        relevance=RelevanceService() if allow_server_key else None,
         analyzer_factory=lambda key: QuestionAnalyzer(api_key=key),
         answers_factory=lambda key: AnswerService(api_key=key),
+        relevance_factory=lambda key: RelevanceService(api_key=key),
     )
 
 
@@ -139,6 +149,60 @@ def _db(call: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     except Exception as exc:  # ChromaDB 오류는 종류가 다양해 한곳에서 묶어 처리한다
         logger.exception("database error")
         raise ApiError(500, "DATABASE_ERROR", "정책 데이터를 불러오지 못했습니다.") from exc
+
+
+def _region_search_terms(region: RegionSelection) -> list[str]:
+    """metadata 필터가 담당하는 지역 표현을 검색 문장에서 제거하기 위한 별칭 목록."""
+    terms = {region.level1.strip(), region.level2.strip()}
+    suffixes = ("특별자치시", "특별자치도", "특별시", "광역시", "자치시", "자치도", "시", "군", "구", "도")
+    for value in tuple(terms):
+        if not value:
+            continue
+        for suffix in suffixes:
+            if value.endswith(suffix) and len(value) > len(suffix):
+                stem = value[: -len(suffix)]
+                terms.add(stem)
+                if suffix in {"특별시", "광역시", "특별자치시"}:
+                    terms.add(stem + "시")
+                elif suffix in {"특별자치도", "자치도"}:
+                    terms.add(stem + "도")
+                break
+    return sorted((term for term in terms if term), key=len, reverse=True)
+
+
+def _search_query_without_region(query: str, region: RegionSelection) -> str:
+    """지역 필터와 중복되는 지역명을 제거하되 검색 의미가 비면 원문을 유지한다."""
+    cleaned = query
+    for term in _region_search_terms(region):
+        cleaned = cleaned.replace(term, " ")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,/·")
+    return cleaned or query.strip()
+
+
+_RELEVANCE_PRIORITY = {"direct": 0, "conditional": 1, "indirect": 2}
+
+
+def _apply_relevance(candidates: list[Any], judgments: list[Any]) -> list[Any]:
+    """검증 결과를 후보에 결합하고 unrelated를 제거한다."""
+    by_id = {item.policy_id: item for item in judgments}
+    related = []
+    for candidate in candidates:
+        judgment = by_id[candidate.policy_id]
+        if judgment.relevance == "unrelated":
+            continue
+        related.append(replace(
+            candidate,
+            relevance=judgment.relevance,
+            relevance_reason=judgment.reason,
+            reasons=[*candidate.reasons, f"Gemini 적합성 {judgment.relevance}: {judgment.reason}"],
+        ))
+    return sorted(
+        related,
+        key=lambda item: (
+            _RELEVANCE_PRIORITY[item.relevance],
+            -(item.reranker_score if item.reranker_score is not None else float("-inf")),
+        ),
+    )
 
 
 # ---------------------------------------------------------------- 요청 모델
@@ -223,16 +287,58 @@ def create_app(services: Services | None = None) -> FastAPI:
         except QuestionAnalysisError as exc:
             raise _llm_error(exc) from exc
 
+        retrieval_query = _search_query_without_region(analysis.search_query, region)
         # 검색 결과가 없어도 오류가 아니라 빈 목록으로 응답한다(계약서 9장 검색 규칙 5).
-        result = services.search.search_policies(analysis.search_query, region, age=body.age)
+        result = services.search.search_policies(
+            retrieval_query,
+            region,
+            age=body.age,
+        )
+        candidates = result.local_policies + result.national_policies
+        reranked = (
+            services.reranker.rerank(retrieval_query, candidates)
+            if services.reranker is not None
+            else candidates
+        )
+        # 리랭커는 임계값 판정이 아니라 Gemini에 넘길 상위 후보 선택에만 사용한다.
+        local_for_validation = [
+            item for item in reranked if item.metadata.get("source") == "local"
+        ][:VALIDATION_LOCAL_LIMIT]
+        national_for_validation = [
+            item for item in reranked if item.metadata.get("source") == "national"
+        ][:VALIDATION_NATIONAL_LIMIT]
+        validation_candidates = local_for_validation + national_for_validation
+
+        validation_status = "fallback"
+        local_policies = local_for_validation
+        national_policies = national_for_validation
+        validator = None
+        if services.relevance is not None or services.relevance_factory is not None:
+            validator = _llm_service(request, services.relevance, services.relevance_factory)
+        if validator is not None:
+            try:
+                validation = validator.validate_candidates(
+                    question=body.question,
+                    analysis=analysis,
+                    region=region,
+                    age=body.age,
+                    candidates=validation_candidates,
+                )
+                validated = _apply_relevance(validation_candidates, validation.judgments)
+                validation_status = validation.status
+                local_policies = [item for item in validated if item.metadata.get("source") == "local"]
+                national_policies = [item for item in validated if item.metadata.get("source") == "national"]
+            except RelevanceValidationError:
+                logger.warning("relevance validation failed; returning reranker fallback", exc_info=True)
         return {
             "analysis": {
                 "route": analysis.route,
                 "intents": analysis.intents,
                 "search_query": analysis.search_query,
             },
-            "local_policies": [asdict(item) for item in result.local_policies],
-            "national_policies": [asdict(item) for item in result.national_policies],
+            "validation_status": validation_status,
+            "local_policies": [asdict(item) for item in local_policies],
+            "national_policies": [asdict(item) for item in national_policies],
         }
 
     @app.get("/policies/{policy_id}")

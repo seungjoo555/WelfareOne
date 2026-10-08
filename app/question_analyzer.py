@@ -12,7 +12,7 @@ from google.genai import errors, types
 from pydantic import BaseModel, Field, field_validator
 
 from .config import GEMINI_MODEL, PROJECT_DIR
-from .models import QuestionAnalysis
+from .models import QuestionAnalysis, QuestionExclusion
 
 
 ROUTES = {
@@ -28,13 +28,19 @@ INTENT_SECTIONS: dict[str, list[str]] = {
     "benefit": ["benefit"],
     "application": ["application", "administrative"],
     "required_documents": ["documents", "application"],
-    "contact": ["contact_source"],
+    "contact": ["contact_source", "application", "documents", "administrative"],
     "administrative": ["administrative", "contact_source"],
 }
 
 
 class QuestionAnalysisError(RuntimeError):
     """질문 분석을 완료하지 못했을 때 발생한다."""
+
+
+class _GeminiExclusion(BaseModel):
+    concept: str = Field(min_length=1, max_length=80)
+    evidence: str = Field(min_length=1, max_length=120)
+    explicit: bool = True
 
 
 class _GeminiAnalysis(BaseModel):
@@ -68,7 +74,7 @@ class _GeminiAnalysis(BaseModel):
         ]
     ] = Field(min_length=1, max_length=3)
     include_keywords: list[str] = Field(default_factory=list, max_length=8)
-    exclude_keywords: list[str] = Field(default_factory=list, max_length=8)
+    exclusions: list[_GeminiExclusion] = Field(default_factory=list, max_length=5)
     confidence: float = Field(ge=0.0, le=1.0)
 
     @field_validator("policy_name", mode="before")
@@ -85,6 +91,12 @@ SYSTEM_INSTRUCTION = """
 
 [route 규칙]
 - situation_search: 생활 상황이나 필요를 말하며 알맞은 정책 추천을 요청함
+- 사용자가 '지원', '정책', '추천'을 직접 말하지 않아도 월세·응시료·병원비·식비처럼
+  복지 지원과 연결 가능한 비용이나 생활 부담을 호소하면 situation_search
+- 짧은 구어체도 숨은 지원 탐색 의도로 해석함. 예: '자격증 왜 이렇게 비싸',
+  '밥값이 너무 비싸', '병원비 부담돼', '면접 보러 다니기 돈 많이 들어'
+- 질문이 짧거나 모호하거나 복지정책과 직접 관련 없어 보여도 검색을 차단하지 말고
+  situation_search로 분류하여 사용자의 표현을 보존한 search_query를 작성
 - specific_policy: 특정 정책의 이름을 직접 언급했으며 아직 선택된 정책이 없음
 - current_policy_question: 이미 선택된 정책이 있고 그 정책에 관한 후속 질문임
 - current_policy_id가 있더라도 사용자가 명백히 다른 정책명을 말하면 specific_policy
@@ -107,15 +119,28 @@ SYSTEM_INSTRUCTION = """
 
 [search_query 규칙]
 - 사용자의 핵심 상황과 원하는 지원을 보존한 짧은 한국어 검색 문장으로 작성
+- 사용자가 직접 말하지 않았더라도 문맥상 원하는 지원 형태가 분명하면 검색에 필요한
+  구체적인 행정 표현을 보완함. 예: '자격증이 비싸' -> '청년 어학·자격시험 응시료 직접 지원 정책'
+- 넓은 상위 개념으로 일반화하지 않음. 자격시험 응시료를 단순 교육비로, 월세 직접 지원을
+  단순 주거 지원으로, 질병으로 쉬는 기간의 소득보전을 단순 의료비로 바꾸지 않음
+- 비용 부담 질문은 무엇의 비용인지와 원하는 지원 형태를 함께 기록
+- 서로 다른 지원 분야를 동시에 요청하면 각 주제의 핵심어를 모두 보존
 - 특정 정책명이 있으면 정확히 보존
 - 사용자가 말하지 않은 지역, 나이, 소득, 직업, 혼인 상태를 만들지 않음
 - '서울'을 '서울특별시'처럼 바꾸는 지역 정규화는 여기서 하지 않음
-- 부정 표현은 제거하지 말고 exclude_keywords에도 핵심 제외 개념을 기록
+- 부정 표현은 검색문에서 제거하지 말고 exclusions에 구조화하여 기록
+- exclusions에는 사용자가 명시적으로 원하지 않는 개념만 기록
+- concept에는 정규화된 제외 개념, evidence에는 사용자 원문의 정확한 근거 구절을 기록
+- 단순히 선호하지 않을 것으로 추측한 개념은 exclusions에 넣지 않음
+- 예시:
+  * '아파서 일을 못 했어' -> '질병이나 부상으로 근로하지 못한 기간의 생활비 또는 소득보전 지원'
+  * '대출 말고 월세 지원' -> '대출이 아닌 청년 월세 직접 지원'
+  * '월세랑 자격증 비용이 부담돼' -> '청년 월세 직접 지원 및 어학·자격시험 응시료 지원'
 
 [기타 규칙]
 - policy_name은 실제로 언급된 정책명 또는 명백한 정책명 구절만 기록
 - '월세 지원', '취업 지원' 같은 일반 분야 표현은 policy_name이 아님
-- include_keywords와 exclude_keywords는 각각 중복 없이 8개 이하
+- include_keywords는 중복 없이 8개 이하, exclusions는 중복 없이 5개 이하
 - confidence는 분석 확신도를 0~1로 표시
 """.strip()
 
@@ -231,6 +256,18 @@ class QuestionAnalyzer:
         intents = _normalize_intents(parsed.intent, parsed.intents, question)
         intent = intents[0]
         sections = _sections_for_intents(intents)
+        exclusions: list[QuestionExclusion] = []
+        for item in parsed.exclusions:
+            concept = item.concept.strip()
+            evidence = item.evidence.strip()
+            if (
+                item.explicit
+                and concept
+                and evidence
+                and evidence in question
+                and concept not in {value.concept for value in exclusions}
+            ):
+                exclusions.append(QuestionExclusion(concept=concept, evidence=evidence))
         return QuestionAnalysis(
             route=route,
             policy_name=parsed.policy_name.strip() if parsed.policy_name else None,
@@ -239,7 +276,7 @@ class QuestionAnalyzer:
             intents=intents,
             requested_sections=sections,
             include_keywords=_clean_words(parsed.include_keywords),
-            exclude_keywords=_clean_words(parsed.exclude_keywords),
+            exclusions=exclusions,
             confidence=float(parsed.confidence),
         )
 

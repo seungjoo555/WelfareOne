@@ -1,6 +1,6 @@
 import unittest
 
-from app.question_analyzer import QuestionAnalyzer, _GeminiAnalysis
+from app.question_analyzer import QuestionAnalyzer, _GeminiAnalysis, _GeminiExclusion
 
 
 class QuestionAnalyzerMappingTest(unittest.TestCase):
@@ -12,7 +12,7 @@ class QuestionAnalyzerMappingTest(unittest.TestCase):
             intent="required_documents",
             intents=["required_documents"],
             include_keywords=["월세", "월세", "임대차계약서"],
-            exclude_keywords=[],
+            exclusions=[],
             confidence=0.9,
         )
 
@@ -111,6 +111,28 @@ class QuestionAnalyzerMappingTest(unittest.TestCase):
             ["application", "contact", "required_documents"],
         )
         self.assertIn("documents", result.requested_sections)
+
+    def test_explicit_exclusion_requires_verbatim_evidence(self):
+        parsed = _GeminiAnalysis(
+            route="situation_search",
+            policy_name=None,
+            search_query="대출이 아닌 청년 월세 직접 지원",
+            intent="policy_search",
+            intents=["policy_search"],
+            exclusions=[
+                _GeminiExclusion(concept="대출", evidence="대출안하고", explicit=True),
+                _GeminiExclusion(concept="보증", evidence="원문에 없는 표현", explicit=True),
+            ],
+            confidence=0.95,
+        )
+
+        result = QuestionAnalyzer._to_result(
+            parsed,
+            current_policy_id=None,
+            question="대출안하고 월세 지원 받고 싶어",
+        )
+
+        self.assertEqual(result.exclusions[0].evidence, "대출안하고")
 
 
 if __name__ == "__main__":

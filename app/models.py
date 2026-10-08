@@ -23,6 +23,9 @@ class PolicyCandidate:
     summary: str
     metadata: dict[str, Any] = field(default_factory=dict)
     reasons: list[str] = field(default_factory=list)
+    reranker_score: float | None = None
+    relevance: str | None = None
+    relevance_reason: str | None = None
 
 
 @dataclass
@@ -51,8 +54,32 @@ class QuestionAnalysis:
     intents: list[str] = field(default_factory=list)
     requested_sections: list[str] = field(default_factory=list)
     include_keywords: list[str] = field(default_factory=list)
-    exclude_keywords: list[str] = field(default_factory=list)
+    exclusions: list["QuestionExclusion"] = field(default_factory=list)
     confidence: float = 0.0
+
+
+@dataclass
+class QuestionExclusion:
+    """질문 원문에서 Gemini가 찾은 명시적 제외 의도."""
+
+    concept: str
+    evidence: str
+    explicit: bool = True
+
+
+@dataclass
+class PolicyJudgment:
+    policy_id: str
+    relevance: str
+    reason: str
+
+
+@dataclass
+class RelevanceValidationResult:
+    """후보 적합성 노드의 출력. LangGraph 상태에 그대로 담을 수 있다."""
+
+    status: str
+    judgments: list[PolicyJudgment] = field(default_factory=list)
 
 
 @dataclass

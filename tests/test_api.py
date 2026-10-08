@@ -1,6 +1,7 @@
 """FastAPI 라우터 테스트. 실제 DB·임베딩 모델·Gemini 없이 가짜 서비스로 응답 형식을 검증한다."""
 
 import unittest
+from dataclasses import replace
 
 from fastapi.testclient import TestClient
 
@@ -12,9 +13,13 @@ from app.models import (
     PolicyResource,
     PolicySearchResult,
     PolicySection,
+    PolicyJudgment,
     QuestionAnalysis,
+    QuestionExclusion,
+    RelevanceValidationResult,
 )
 from app.question_analyzer import QuestionAnalysisError
+from app.relevance_service import RelevanceValidationError
 
 REGIONS = {"경기도": ["성남시"], "세종특별자치시": []}
 
@@ -60,7 +65,7 @@ class FakeSearch:
         self.empty = False
 
     def search_policies(self, question, region, age=None, **kwargs):
-        self.calls.append((question, region, age))
+        self.calls.append((question, region, age, kwargs))
         if self.empty:
             return PolicySearchResult()
         return PolicySearchResult(
@@ -74,6 +79,8 @@ class FakeAnalyzer:
         self.route = "situation_search"
         self.error = None
         self.calls = []
+        self.include_keywords = []
+        self.exclusions = []
 
     def analyze_question(self, question, current_policy_id=None, current_policy_title=None):
         self.calls.append((question, current_policy_id, current_policy_title))
@@ -86,6 +93,45 @@ class FakeAnalyzer:
             intent="eligibility",
             intents=["eligibility", "application"],
             requested_sections=["target_criteria", "application", "administrative"],
+            include_keywords=self.include_keywords,
+            exclusions=self.exclusions,
+        )
+
+
+class FakeReranker:
+    def __init__(self):
+        self.calls = []
+        self.scores = []
+
+    def rerank(self, question, candidates):
+        self.calls.append((question, candidates))
+        scores = self.scores or [0.9] * len(candidates)
+        return [
+            replace(candidate, reranker_score=score)
+            for candidate, score in zip(candidates, scores)
+        ]
+
+
+class FakeRelevance:
+    def __init__(self):
+        self.calls = []
+        self.relevances = {}
+        self.error = None
+
+    def validate_candidates(self, question, analysis, region, age, candidates):
+        self.calls.append((question, analysis, region, age, candidates))
+        if self.error:
+            raise self.error
+        return RelevanceValidationResult(
+            status="verified",
+            judgments=[
+                PolicyJudgment(
+                    policy_id=item.policy_id,
+                    relevance=self.relevances.get(item.policy_id, "direct"),
+                    reason=f"{item.title} 판정 근거",
+                )
+                for item in candidates
+            ],
         )
 
 
@@ -125,7 +171,17 @@ class ApiTest(unittest.TestCase):
         self.search = FakeSearch()
         self.analyzer = FakeAnalyzer()
         self.answers = FakeAnswers()
-        services = Services(self.repo, self.search, self.analyzer, self.answers, REGIONS)
+        self.reranker = FakeReranker()
+        self.relevance = FakeRelevance()
+        services = Services(
+            self.repo,
+            self.search,
+            self.analyzer,
+            self.answers,
+            REGIONS,
+            reranker=self.reranker,
+            relevance=self.relevance,
+        )
         # raise_server_exceptions=False: 예기치 못한 오류도 실제 서버처럼 500 응답으로 확인한다.
         self.client_cm = TestClient(create_app(services), raise_server_exceptions=False)
         self.client = self.client_cm.__enter__()
@@ -166,20 +222,137 @@ class ApiTest(unittest.TestCase):
         )
         self.assertEqual([p["policy_id"] for p in data["local_policies"]], ["local:EXAMPLE1"])
         self.assertEqual([p["policy_id"] for p in data["national_policies"]], ["national:EXAMPLE2"])
+        self.assertEqual(data["validation_status"], "verified")
+        self.assertEqual(data["local_policies"][0]["relevance"], "direct")
         for key in ("policy_id", "title", "region_text", "score", "distance", "scope", "summary", "metadata", "reasons"):
             self.assertIn(key, data["local_policies"][0])
 
     def test_search_passes_search_query_region_and_age_to_service(self):
         self.client.post("/policies/search", json=self.search_body())
-        question, region, age = self.search.calls[0]
+        question, region, age, kwargs = self.search.calls[0]
         self.assertEqual(question, "청년 월세가 부담돼요")
         self.assertEqual((region.level1, region.level2, age), ("경기도", "성남시", 24))
 
+    def test_search_reranks_all_candidates_with_normalized_search_query(self):
+        self.client.post("/policies/search", json=self.search_body())
+        question, candidates = self.reranker.calls[0]
+        self.assertEqual(question, "청년 월세가 부담돼요")
+        self.assertEqual(
+            [item.policy_id for item in candidates],
+            ["local:EXAMPLE1", "national:EXAMPLE2"],
+        )
+
+    def test_search_removes_selected_region_from_retrieval_and_reranker_query(self):
+        self.client.post(
+            "/policies/search",
+            json=self.search_body(question="경기도 성남시 월세 지원 정책"),
+        )
+
+        self.assertEqual(self.search.calls[0][0], "청년 월세 지원 정책")
+        self.assertEqual(self.reranker.calls[0][0], "청년 월세 지원 정책")
+
+    def test_search_keeps_specific_target_terms_in_reranker_query(self):
+        self.client.post(
+            "/policies/search",
+            json=self.search_body(question="경기도 성남시 저소득 대학생 의료비 지원 정책"),
+        )
+
+        self.assertEqual(
+            self.search.calls[0][0],
+            "청년 저소득 대학생 의료비 지원 정책",
+        )
+        self.assertEqual(
+            self.reranker.calls[0][0],
+            "청년 저소득 대학생 의료비 지원 정책",
+        )
+
+    def test_search_uses_full_medical_query_for_vector_and_reranker(self):
+        self.client.post(
+            "/policies/search",
+            json=self.search_body(question="병원비 및 의료비 부담 경감 지원 정책"),
+        )
+
+        self.assertEqual(
+            self.search.calls[0][0],
+            "청년 병원비 및 의료비 부담 경감 지원 정책",
+        )
+        self.assertEqual(
+            self.reranker.calls[0][0],
+            "청년 병원비 및 의료비 부담 경감 지원 정책",
+        )
+
+    def test_search_does_not_drop_low_reranker_scores_before_validation(self):
+        self.reranker.scores = [0.001, 0.8]
+        response = self.client.post("/policies/search", json=self.search_body())
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(
+            [item["policy_id"] for item in data["local_policies"]],
+            ["local:EXAMPLE1"],
+        )
+        self.assertEqual(
+            [item["policy_id"] for item in data["national_policies"]],
+            ["national:EXAMPLE2"],
+        )
+
+    def test_search_removes_only_gemini_unrelated_candidates(self):
+        self.relevance.relevances = {
+            "local:EXAMPLE1": "unrelated",
+            "national:EXAMPLE2": "indirect",
+        }
+        response = self.client.post("/policies/search", json=self.search_body())
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["local_policies"], [])
+        self.assertEqual(
+            [item["policy_id"] for item in data["national_policies"]],
+            ["national:EXAMPLE2"],
+        )
+        self.assertEqual(data["national_policies"][0]["relevance"], "indirect")
+
+    def test_search_falls_back_to_reranker_results_when_validation_fails(self):
+        self.relevance.error = RelevanceValidationError("검증 실패")
+        with self.assertLogs("welfareone.api", level="WARNING"):
+            response = self.client.post("/policies/search", json=self.search_body())
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["validation_status"], "fallback")
+        self.assertEqual([item["policy_id"] for item in data["local_policies"]], ["local:EXAMPLE1"])
+        self.assertEqual([item["policy_id"] for item in data["national_policies"]], ["national:EXAMPLE2"])
+
     def test_search_without_level2_uses_empty_string(self):
         self.client.post("/policies/search", json=self.search_body(region={"level1": "세종특별자치시", "level2": None}, age=None))
-        _, region, age = self.search.calls[0]
+        _, region, age, _ = self.search.calls[0]
         self.assertEqual(region.level2, "")
         self.assertIsNone(age)
+
+    def test_search_does_not_use_soft_keywords_as_first_stage_score(self):
+        self.analyzer.include_keywords = ["월세"]
+        response = self.client.post(
+            "/policies/search",
+            json=self.search_body(),
+        )
+        self.assertEqual(response.status_code, 200)
+        kwargs = self.search.calls[0][3]
+        self.assertNotIn("include_keywords", kwargs)
+        self.assertNotIn("hard_exclude_keywords", kwargs)
+
+    def test_structured_exclusion_is_passed_to_validation_not_vector_filter(self):
+        self.analyzer.exclusions = [QuestionExclusion(concept="대출", evidence="대출 말고")]
+        response = self.client.post(
+            "/policies/search",
+            json=self.search_body(question="대출 말고 월세 지원을 찾아줘"),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("hard_exclude_keywords", self.search.calls[0][3])
+        self.assertEqual(self.relevance.calls[0][1].exclusions[0].concept, "대출")
+        self.assertEqual(
+            self.reranker.calls[0][0],
+            "청년 대출 말고 월세 지원을 찾아줘",
+        )
 
     def test_search_empty_result_is_not_an_error(self):
         self.search.empty = True
@@ -287,6 +460,7 @@ class ByokTest(unittest.TestCase):
     def setUp(self):
         self.analyzer = FakeAnalyzer()
         self.answers = FakeAnswers()
+        self.relevance = FakeRelevance()
         self.made_with = []
 
         def analyzer_factory(key):
@@ -297,9 +471,15 @@ class ByokTest(unittest.TestCase):
             self.made_with.append(("answers", key))
             return self.answers
 
+        def relevance_factory(key):
+            self.made_with.append(("relevance", key))
+            return self.relevance
+
         self.services = Services(
             FakeRepository(), FakeSearch(), None, None, REGIONS,
-            analyzer_factory=analyzer_factory, answers_factory=answers_factory,
+            analyzer_factory=analyzer_factory,
+            answers_factory=answers_factory,
+            relevance_factory=relevance_factory,
         )
         self.client_cm = TestClient(create_app(self.services), raise_server_exceptions=False)
         self.client = self.client_cm.__enter__()
@@ -324,7 +504,7 @@ class ByokTest(unittest.TestCase):
     def test_search_uses_the_key_from_header_and_never_echoes_it(self):
         response = self.client.post("/policies/search", json=self.BODY, headers={"X-Gemini-Api-Key": VALID_KEY})
         self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(self.made_with, [("analyzer", VALID_KEY)])
+        self.assertEqual(self.made_with, [("analyzer", VALID_KEY), ("relevance", VALID_KEY)])
         self.assertNotIn(VALID_KEY, response.text)
 
     def test_ask_builds_both_services_with_the_header_key(self):

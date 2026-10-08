@@ -46,6 +46,9 @@ const candidate = (
   distance: 0.3,
   metadata: {},
   reasons: ["벡터 유사도 0.700", "검색 범위 시군구"], // 실제 형식(개발용 문구, 화면에 표시하지 않음)
+  reranker_score: null,
+  relevance: "direct",
+  relevance_reason: "질문의 필요를 직접 지원하는 예시 정책입니다.",
   ...partial,
 });
 
@@ -85,12 +88,13 @@ export const handlers = [
       search_query: `청년 ${body.question}`.slice(0, 60),
     };
     if (body.question.includes("없음")) {
-      const empty: SearchResponse = { analysis, local_policies: [], national_policies: [] };
+      const empty: SearchResponse = { analysis, validation_status: "verified", local_policies: [], national_policies: [] };
       return HttpResponse.json(empty);
     }
     const regionText = [body.region.level1, body.region.level2].filter(Boolean).join(" ");
     const result: SearchResponse = {
       analysis,
+      validation_status: "verified",
       local_policies: [
         candidate({
           policy_id: "local:MOCK0001",

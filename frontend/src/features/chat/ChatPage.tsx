@@ -54,6 +54,7 @@ export function ChatPage({ state, dispatch, history }: Props) {
             id: uid(),
             type: "ai_candidates",
             analysis: res.analysis,
+            validation_status: res.validation_status,
             local_policies: res.local_policies,
             national_policies: res.national_policies,
           },

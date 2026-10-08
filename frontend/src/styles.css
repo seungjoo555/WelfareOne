@@ -195,6 +195,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .candidate-group h3 { font-size: 0.95em; margin-bottom: 6px; }
 .candidate-list { display: grid; gap: 8px; }
+.candidate-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.candidate-page-status { color: var(--muted); font-size: 0.82em; }
 .candidate {
   text-align: left; display: flex; flex-direction: column; gap: 2px; width: 100%;
   border: 1px solid var(--border); background: var(--bg); border-radius: 10px; padding: 10px 12px; cursor: pointer;
@@ -202,6 +204,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .candidate:hover { border-color: var(--accent); }
 .candidate.selected { border-color: var(--accent); background: var(--accent-soft); }
 .candidate-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.candidate-badges { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 4px; }
+.badge.relevance-direct { background: var(--accent-soft); color: var(--accent); }
+.badge.relevance-conditional { background: var(--warn-bg); color: var(--warn-text); }
+.badge.relevance-indirect { background: var(--surface); color: var(--muted); border: 1px solid var(--border); }
 .candidate-region { color: var(--muted); font-size: 0.85em; }
 .candidate-summary { font-size: 0.9em; }
 

@@ -12,7 +12,10 @@ export type SectionKey =
   | "contact_source"
   | "administrative";
 
-export type Route = "situation_search" | "specific_policy" | "current_policy_question";
+export type Route =
+  | "situation_search"
+  | "specific_policy"
+  | "current_policy_question";
 
 export type Intent =
   | "policy_search"
@@ -44,6 +47,9 @@ export interface PolicyCandidate {
   summary: string;
   metadata: Record<string, unknown>;
   reasons: string[];
+  reranker_score: number | null;
+  relevance: "direct" | "conditional" | "indirect" | null;
+  relevance_reason: string | null;
 }
 
 export interface SearchAnalysis {
@@ -60,6 +66,7 @@ export interface SearchRequest {
 }
 export interface SearchResponse {
   analysis: SearchAnalysis;
+  validation_status: "verified" | "fallback";
   local_policies: PolicyCandidate[];
   national_policies: PolicyCandidate[];
 }

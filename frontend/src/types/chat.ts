@@ -10,6 +10,7 @@ export type Message =
       id: string;
       type: "ai_candidates";
       analysis: SearchAnalysis;
+      validation_status: "verified" | "fallback";
       local_policies: PolicyCandidate[];
       national_policies: PolicyCandidate[];
     }

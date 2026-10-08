@@ -119,6 +119,44 @@ class AnswerServiceTest(unittest.TestCase):
         self.assertEqual(len(result.resources), 1)
         self.assertEqual(result.resources[0].label, "신청서.hwp")
 
+    def test_extracts_bare_domain_and_normalizes_scheme(self):
+        contexts = [
+            PolicySection(
+                section="application",
+                chunk_index=0,
+                document="서울형 입원 생활비 지원 사업 누리집(sickleave.seoul.go.kr)에서 신청합니다.",
+            )
+        ]
+        resources = extract_resources(contexts)
+        self.assertEqual(len(resources), 1)
+        self.assertEqual(resources[0].url, "https://sickleave.seoul.go.kr")
+        self.assertEqual(resources[0].resource_type, "website")
+
+    def test_resource_link_overrides_contradictory_missing_answer(self):
+        contexts = [
+            PolicySection(
+                section="application",
+                chunk_index=0,
+                document="누리집 sickleave.seoul.go.kr에서 신청합니다.",
+            )
+        ]
+        parsed = _GeminiAnswer(
+            answer="제공된 공식 자료에서는 사이트 정보가 확인되지 않습니다.",
+            used_sections=["application"],
+            evidence=[],
+            grounded=False,
+        )
+        result = AnswerService._to_result(
+            parsed,
+            "local:TEST",
+            contexts,
+            resource_contexts=contexts,
+            question="사이트 있어?",
+        )
+        self.assertIn("관련 사이트", result.answer)
+        self.assertEqual(result.resources[0].url, "https://sickleave.seoul.go.kr")
+        self.assertTrue(result.grounded)
+
 
 if __name__ == "__main__":
     unittest.main()
