@@ -7,7 +7,8 @@ from google.genai import errors
 from app.env import load_env_file
 from app.gemini_retry import call_with_retry
 from app.models import PolicyCandidate, PolicySearchResult, QuestionAnalysis, RegionSelection
-from app.search_pipeline import DEFAULT_TOP_K, run_search
+from app.relevance_judge import POOL_PER_SCOPE
+from app.search_pipeline import run_search
 
 
 def candidate(policy_id: str, scope: str = "시군구") -> PolicyCandidate:
@@ -68,31 +69,34 @@ class RunSearchTest(unittest.TestCase):
         self.assertTrue(outcome.relevance_checked)
         self.assertEqual([p.policy_id for p in outcome.local_policies][:2], ["local:0", "local:3"])
         self.assertIn("local:1", outcome.low_relevance_ids)
-        self.assertGreater(search.calls[0][1]["local_top_k"], DEFAULT_TOP_K)
+        self.assertEqual(search.calls[0][1]["local_top_k"], POOL_PER_SCOPE)
 
-    def test_judge_returns_all_relevant_candidates_for_paging(self):
-        # 관련 판정 후보가 3개를 넘어도 풀 전체를 내려준다(화면이 3개씩 쪽으로 넘겨 본다). 접힘은 최대 3개.
+    def test_judge_returns_whole_pool_relevant_first_then_low_relevance(self):
+        # 풀 전체를 내려준다: 관련 판정 후보가 앞, 나머지(관련도 낮음)가 뒤. 화면이 3개씩 이어서 보여 준다.
         search = FakeSearch(local=8, national=2)
-        judge = FakeJudge(relevant_ids={f"local:{i}" for i in range(6)} | {"national:0"})
+        judge = FakeJudge(relevant_ids={"local:5", "local:2", "national:0"})
         outcome = run_search(analysis(), search, REGION, None, "q", judge)
-        relevant_local = [p.policy_id for p in outcome.local_policies if p.policy_id not in outcome.low_relevance_ids]
-        self.assertEqual(relevant_local, [f"local:{i}" for i in range(6)])
-        self.assertEqual(len(outcome.local_policies), 8)  # 관련 6 + 접힘 2
+        ids = [p.policy_id for p in outcome.local_policies]
+        self.assertEqual(ids[:2], ["local:2", "local:5"])  # 관련 후보가 먼저(풀의 점수 순서 유지)
+        self.assertEqual(len(ids), 8)  # 나머지 6개도 뒤에 이어진다
+        self.assertEqual(
+            set(outcome.low_relevance_ids) & set(ids), {f"local:{i}" for i in (0, 1, 3, 4, 6, 7)}
+        )
         self.assertEqual([p.policy_id for p in outcome.national_policies][:1], ["national:0"])
 
-    def test_judge_with_no_relevant_candidates_still_folds_at_most_three(self):
+    def test_judge_with_no_relevant_candidates_keeps_whole_pool_as_low_relevance(self):
         search = FakeSearch(local=8)
         outcome = run_search(analysis(), search, REGION, None, "q", FakeJudge(relevant_ids=set()))
-        self.assertEqual(len(outcome.local_policies), 3)
-        self.assertEqual(len(outcome.low_relevance_ids), 3)
+        self.assertEqual(len(outcome.local_policies), 8)
+        self.assertEqual(len(outcome.low_relevance_ids), 8)
 
-    def test_judge_failure_falls_back_to_distance_top_k(self):
+    def test_judge_failure_falls_back_to_whole_pool_in_distance_order(self):
         search = FakeSearch(local=6, national=6)
         with self.assertLogs("welfareone.api", level="WARNING"):
             outcome = run_search(analysis(), search, REGION, None, "q", FakeJudge(error=RuntimeError("boom")))
         self.assertFalse(outcome.relevance_checked)
-        self.assertEqual(len(outcome.local_policies), DEFAULT_TOP_K)
-        self.assertEqual(len(outcome.national_policies), DEFAULT_TOP_K)
+        self.assertEqual([p.policy_id for p in outcome.local_policies], [f"local:{i}" for i in range(6)])
+        self.assertEqual(len(outcome.national_policies), 6)
         self.assertEqual(outcome.low_relevance_ids, [])
 
     def test_judge_is_skipped_for_other_routes(self):

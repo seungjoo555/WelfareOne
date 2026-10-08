@@ -22,7 +22,7 @@ from .config import GEMINI_MODEL
 from .models import PolicyCandidate, PolicySearchResult
 
 # 판정에 보낼 후보 수(범위별)와, 판정 뒤 화면에 올릴 개수
-POOL_PER_SCOPE = 8
+POOL_PER_SCOPE = 12  # 판정에 보내는 후보 수(범위별). 화면이 3개씩 쪽으로 넘겨 보므로 4쪽까지 이어질 수 있다
 SHOW_PER_SCOPE = 3  # 관련 있다고 판정된 후보를 범위별로 최대 몇 개 보여 줄지
 LOW_PER_SCOPE = 3  # 무관 판정 후보를 접어서 몇 개까지 남길지
 SUMMARY_CHARS = 300

@@ -15,6 +15,7 @@ from app.models import (
     QuestionAnalysis,
 )
 from app.question_analyzer import QuestionAnalysisError
+from app.relevance_judge import POOL_PER_SCOPE
 
 REGIONS = {"경기도": ["성남시"], "세종특별자치시": []}
 
@@ -97,8 +98,9 @@ class FakeAnswers:
         self.error = None
         self.calls = []
 
-    def generate_answer(self, question, policy_id, contexts, requested_sections=None, policy_title=None):
+    def generate_answer(self, question, policy_id, contexts, requested_sections=None, policy_title=None, intents=None):
         self.calls.append((question, policy_id, len(contexts), requested_sections, policy_title))
+        self.last_intents = intents
         if self.error:
             raise self.error
         return AnswerResult(
@@ -279,6 +281,46 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(self.analyzer.calls[0], ("대상이 어떻게 되나요?", "local:EXAMPLE1", "예시 지역 정책"))
         self.assertEqual(self.answers.calls[0][3], ["target_criteria", "application", "administrative"])
 
+    def test_ask_passes_question_intents_to_the_answer_for_typed_questions(self):
+        self.analyzer.route = "current_policy_question"
+        self.client.post("/policies/local%3AEXAMPLE1/ask", json={"question": "대상이 어떻게 되나요?"})
+        self.assertEqual(self.answers.last_intents, ["eligibility", "application"])
+
+    def test_ask_with_intent_skips_the_analyzer_and_uses_that_intent(self):
+        # 자주 묻는 질문 버튼: 분석(Gemini)을 건너뛰고 intent에 맞는 섹션으로 바로 답한다
+        response = self.client.post(
+            "/policies/local%3AEXAMPLE1/ask",
+            json={"question": "신청 방법을 알려주세요", "policy_title": "예시 지역 정책", "intent": "application"},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["route"], "current_policy_question")
+        self.assertEqual(data["intents"], ["application"])
+        self.assertIsNotNone(data["answer"])
+        self.assertEqual(self.analyzer.calls, [])  # 질문 분석을 하지 않는다
+        self.assertEqual(self.answers.calls[0][3], ["application", "administrative"])
+        self.assertEqual(self.answers.last_intents, ["application"])
+
+    def test_ask_with_every_button_intent_maps_to_its_sections(self):
+        expected = {
+            "eligibility": ["target_criteria"],
+            "benefit": ["benefit"],
+            "application": ["application", "administrative"],
+            "administrative": ["administrative", "contact_source"],
+            "required_documents": ["documents", "application"],
+            "contact": ["contact_source"],
+        }
+        for intent, sections in expected.items():
+            self.client.post("/policies/local%3AEXAMPLE1/ask", json={"question": "질문", "intent": intent})
+            self.assertEqual(self.answers.calls[-1][3], sections, intent)
+
+    def test_ask_rejects_unknown_intent(self):
+        response = self.client.post(
+            "/policies/local%3AEXAMPLE1/ask", json={"question": "질문", "intent": "policy_search"}
+        )
+        self.assert_error(response, 422, "INVALID_REQUEST")  # 값 검증 실패는 기존 요청 검증 오류와 같은 422
+        self.assertEqual(self.answers.calls, [])
+
     def test_ask_other_route_returns_null_answer_without_generating(self):
         self.analyzer.route = "situation_search"
         response = self.client.post("/policies/local%3AEXAMPLE1/ask", json={"question": "오늘 날씨", "policy_title": None})
@@ -350,8 +392,8 @@ class RerankApiTest(unittest.TestCase):
 
     def test_candidate_pool_is_widened_only_when_judging(self):
         self.client.post("/policies/search", json=self.body)
-        self.assertEqual(self.search.kwargs["local_top_k"], 8)
-        self.assertEqual(self.search.kwargs["national_top_k"], 8)
+        self.assertEqual(self.search.kwargs["local_top_k"], POOL_PER_SCOPE)
+        self.assertEqual(self.search.kwargs["national_top_k"], POOL_PER_SCOPE)
 
     def test_judge_failure_falls_back_to_distance_results_without_error(self):
         self.judge.error = RuntimeError("quota")
@@ -382,8 +424,9 @@ class RerankApiTest(unittest.TestCase):
         )
         with TestClient(create_app(services), raise_server_exceptions=False) as client:
             data = client.post("/policies/search", json=self.body).json()
-        self.assertEqual(len(data["local_policies"]), 3)
-        self.assertEqual(len(data["national_policies"]), 3)
+        self.assertEqual(len(data["local_policies"]), 8)  # 판정 실패 시 후보 풀 전체를 거리순으로(화면이 3개씩 넘겨 봄)
+        self.assertEqual(len(data["national_policies"]), 8)
+        self.assertFalse(data["relevance_checked"])
 
     def test_specific_policy_questions_are_not_judged(self):
         self.analyzer.route = "specific_policy"

@@ -42,6 +42,57 @@ class _GeminiAnswer(BaseModel):
         return [value for value in values if value in ALLOWED_SECTIONS]
 
 
+# 질문 유형(intent)별로 사람들이 보통 알고 싶어 하는 항목과 순서. 프롬프트의 [답변 구성]으로 전달한다.
+# 원문에 있는 항목만 답하고, 없으면 '확인되지 않습니다'라고 쓰게 한다(추측 금지 원칙은 그대로).
+INTENT_ANSWER_GUIDE: dict[str, tuple[str, list[str]]] = {
+    "eligibility": (
+        "지원 대상",
+        ["누가 대상인가(연령·거주지·소득·재산·취업/학적 상태 등 원문 조건)", "제외 대상 또는 우선 선정 대상", "신청 전에 확인할 점"],
+    ),
+    "benefit": (
+        "지원 내용",
+        ["무엇을 지원하는가", "금액·횟수·기간·한도", "지급 방식과 조건"],
+    ),
+    "application": (
+        "신청 방법",
+        ["어디서 어떻게 신청하는가(온라인·방문 등)", "신청 절차 순서", "신청 시기"],
+    ),
+    "administrative": (
+        "신청 기간·행정 정보",
+        ["신청(접수) 기간", "사업 기간 또는 마감", "상시·연중 여부"],
+    ),
+    "required_documents": (
+        "필요 서류",
+        ["제출 서류 목록", "서식·첨부파일", "발급처와 유의사항"],
+    ),
+    "contact": (
+        "문의처",
+        ["문의 기관·부서", "전화번호·누리집", "접수 장소"],
+    ),
+}
+
+
+def answer_guide(intents: list[str] | None) -> str:
+    """질문 유형에 맞는 [답변 구성] 블록을 만든다. 알려진 유형이 없으면 빈 문자열."""
+    lines: list[str] = []
+    for intent in intents or []:
+        entry = INTENT_ANSWER_GUIDE.get(intent)
+        if entry is None:
+            continue
+        title, items = entry
+        lines.append(f"- {title}: " + " → ".join(items))
+    if not lines:
+        return ""
+    return (
+        "[답변 구성]\n"
+        "아래 항목 순서대로 답하세요. 항목명은 **굵게** 쓰고 내용은 그 아래 짧은 불릿으로 쓰세요. "
+        "원문에서 확인되는 항목만 쓰고, 확인되지 않는 항목은 항목마다 반복하지 말고 맨 끝에 한 줄"
+        "('○○은 제공된 공식 자료에서는 확인되지 않습니다')로 묶으세요. 모든 항목이 확인되지 않으면 그 한 문장만 답하세요. "
+        "줄바꿈은 실제 줄바꿈으로 쓰고 백슬래시와 n을 이어 쓴 문자열을 그대로 쓰지 마세요.\n"
+        + "\n".join(lines)
+    )
+
+
 SYSTEM_INSTRUCTION = """
 당신은 대한민국 청년 복지정책 안내 시스템의 답변 생성기입니다.
 반드시 제공된 하나의 정책 원문만 사용하여 사용자의 질문에 한국어로 답하세요.
@@ -57,6 +108,7 @@ SYSTEM_INSTRUCTION = """
 8. used_sections에는 실제 답변 근거로 사용한 섹션명만 넣으세요.
 9. 답변의 핵심 주장 전체가 원문으로 뒷받침되면 grounded=true입니다.
 10. 원문이 없거나 질문에 답할 근거가 없으면 grounded=false입니다.
+11. [답변 구성]이 주어지면 그 순서를 따라 항목마다 굵은 소제목과 짧은 불릿으로 정리하세요. 핵심만 쓰고, 확인되지 않는 항목은 반복해서 나열하지 마세요.
 """.strip()
 
 
@@ -84,6 +136,7 @@ def _build_contents(
     policy_id: str,
     policy_title: str | None,
     contexts: list[PolicySection],
+    intents: list[str] | None = None,
 ) -> str:
     blocks = []
     for number, context in enumerate(contexts, start=1):
@@ -92,10 +145,13 @@ def _build_contents(
             f"chunk_index={context.chunk_index}]\n{context.document.strip()}"
         )
     joined = "\n\n".join(blocks)
+    guide = answer_guide(intents)
+    guide_block = f"{guide}\n\n" if guide else ""
     return (
         f"정책 ID: {policy_id}\n"
         f"정책명: {policy_title or '원문에서 확인'}\n"
         f"사용자 질문: {question.strip()}\n\n"
+        f"{guide_block}"
         f"공식 정책 원문:\n{joined}"
     )
 
@@ -176,6 +232,7 @@ class AnswerService:
         contexts: list[PolicySection],
         requested_sections: list[str] | None = None,
         policy_title: str | None = None,
+        intents: list[str] | None = None,
     ) -> AnswerResult:
         question = question.strip()
         policy_id = policy_id.strip()
@@ -192,7 +249,7 @@ class AnswerService:
                 grounded=False,
             )
 
-        contents = _build_contents(question, policy_id, policy_title, selected)
+        contents = _build_contents(question, policy_id, policy_title, selected, intents)
         def call() -> _GeminiAnswer:
             response = self.client.models.generate_content(
                 model=self.model,
@@ -272,6 +329,7 @@ def generate_answer(
     contexts: list[PolicySection],
     requested_sections: list[str] | None = None,
     policy_title: str | None = None,
+    intents: list[str] | None = None,
 ) -> AnswerResult:
     """공통 계약서에 정의된 간편 호출 함수."""
     return AnswerService().generate_answer(
@@ -280,4 +338,5 @@ def generate_answer(
         contexts=contexts,
         requested_sections=requested_sections,
         policy_title=policy_title,
+        intents=intents,
     )

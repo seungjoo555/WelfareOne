@@ -17,7 +17,6 @@ from .search_profiles import search_options
 # 기존 API 로거 이름을 유지한다(테스트와 운영 로그 필터가 이 이름을 쓴다).
 logger = logging.getLogger("welfareone.api")
 
-DEFAULT_TOP_K = 3  # search_policies의 기본 local_top_k/national_top_k와 같다(재판정 실패 시 풀을 이 개수로 줄인다)
 
 
 @dataclass
@@ -39,7 +38,7 @@ def run_search(
 ) -> SearchOutcome:
     """검색하고, `judge`가 있으며 상황형 질문이면 후보를 LLM으로 다시 판정한다.
 
-    판정이 실패해도 오류가 아니라 거리 기반 결과(범위별 DEFAULT_TOP_K개)로 대신하고 `relevance_checked=False`를 돌려준다.
+    판정이 실패해도 오류가 아니라 거리 기반 결과(후보 풀 전체, 거리순)로 대신하고 `relevance_checked=False`를 돌려준다.
     검색 결과가 없는 것도 오류가 아니라 빈 목록이다(계약서 9장 검색 규칙 5).
     """
     use_judge = judge is not None and analysis.route == "situation_search"
@@ -58,12 +57,14 @@ def run_search(
         return SearchOutcome(result.local_policies, result.national_policies)
 
     try:
-        # 관련 판정 후보는 풀 전체(범위별 최대 POOL_PER_SCOPE개)를 내려준다. 화면이 3개씩 다음/이전으로 넘겨 본다.
-        outcome = rerank_with_judge(judge, question, analysis.search_query, result, age, show=POOL_PER_SCOPE)
+        # 풀 전체를 내려준다: 관련 판정 후보가 앞, 나머지(관련도 낮음)가 뒤. 화면이 3개씩 다음/이전으로 이어서 보여 준다.
+        outcome = rerank_with_judge(
+            judge, question, analysis.search_query, result, age, show=POOL_PER_SCOPE, keep_low=POOL_PER_SCOPE
+        )
     except Exception as exc:  # noqa: BLE001 - 판정은 부가 단계: 실패하면 거리 기반 결과로 대신한다
         # 질문·키·응답 본문은 남기지 않고 오류 종류만 기록한다
         logger.warning("relevance judge failed (%s); falling back to distance ranking", type(exc).__name__)
-        return SearchOutcome(result.local_policies[:DEFAULT_TOP_K], result.national_policies[:DEFAULT_TOP_K])
+        return SearchOutcome(result.local_policies, result.national_policies)
     return SearchOutcome(
         outcome.local_policies,
         outcome.national_policies,

@@ -262,6 +262,10 @@ def _sections_for_intents(intents: list[str]) -> list[str]:
     return sections
 
 
+# 질문 분석 없이 의도(intent)만 알 때(예: 화면의 자주 묻는 질문 버튼) 필요한 섹션을 구한다.
+sections_for_intents = _sections_for_intents
+
+
 _default_analyzer: QuestionAnalyzer | None = None
 
 

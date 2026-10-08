@@ -18,7 +18,7 @@ import os
 import re
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
-from typing import Annotated, Any, Callable, TypeVar
+from typing import Annotated, Any, Callable, Literal, TypeVar
 
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
@@ -28,7 +28,8 @@ from pydantic import BaseModel, Field, StringConstraints
 
 from .answer_service import AnswerGenerationError
 from .models import PolicySection, RegionSelection
-from .question_analyzer import QuestionAnalysisError
+from .models import QuestionAnalysis
+from .question_analyzer import QuestionAnalysisError, sections_for_intents
 from .search_pipeline import run_search
 
 logger = logging.getLogger("welfareone.api")
@@ -169,9 +170,15 @@ class SearchBody(BaseModel):
     age: int | None = Field(default=None, ge=0, le=120)
 
 
+# 화면의 "자주 묻는 질문" 버튼이 보내는 질문 유형(계약서 8장 intent 값의 일부).
+# 값이 있으면 질문 분석(Gemini)을 생략하고 이 유형으로 바로 답한다.
+AskIntent = Literal["eligibility", "benefit", "application", "administrative", "required_documents", "contact"]
+
+
 class AskBody(BaseModel):
     question: Question
     policy_title: str | None = None
+    intent: AskIntent | None = None
 
 
 # ---------------------------------------------------------------- 앱
@@ -276,18 +283,36 @@ def create_app(services: Services | None = None) -> FastAPI:
         services = svc(request)
         contexts = sections_or_404(services, policy_id)
 
-        analyzer = _llm_service(request, services.analyzer, services.analyzer_factory)
+        # 분석기는 직접 입력한 질문에서만 필요하다(버튼 질문은 아래에서 분석을 건너뛴다).
+        analyzer = (
+            None if body.intent is not None else _llm_service(request, services.analyzer, services.analyzer_factory)
+        )
         answers = _llm_service(request, services.answers, services.answers_factory)
-        try:
-            analysis = analyzer.analyze_question(
-                question=body.question,
-                current_policy_id=policy_id,
-                current_policy_title=body.policy_title,
+        if body.intent is not None:
+            # 자주 묻는 질문 버튼: 질문 유형이 정해져 있으므로 분석 단계를 건너뛴다(Gemini 호출 1회, 항상 같은 섹션).
+            intents = [body.intent]
+            analysis = QuestionAnalysis(
+                route="current_policy_question",
+                policy_name=None,
+                search_query=body.question,
+                intent=body.intent,
+                intents=intents,
+                requested_sections=sections_for_intents(intents),
+                include_keywords=[],
+                exclude_keywords=[],
+                confidence=1.0,
             )
-        except ValueError as exc:
-            raise ApiError(400, "INVALID_REQUEST", str(exc)) from exc
-        except QuestionAnalysisError as exc:
-            raise _llm_error(exc) from exc
+        else:
+            try:
+                analysis = analyzer.analyze_question(
+                    question=body.question,
+                    current_policy_id=policy_id,
+                    current_policy_title=body.policy_title,
+                )
+            except ValueError as exc:
+                raise ApiError(400, "INVALID_REQUEST", str(exc)) from exc
+            except QuestionAnalysisError as exc:
+                raise _llm_error(exc) from exc
 
         base = {"route": analysis.route, "intents": analysis.intents}
         # 선택한 정책에 대한 질문이 아니면 답변을 만들지 않는다(CLI와 같은 분기).
@@ -301,6 +326,7 @@ def create_app(services: Services | None = None) -> FastAPI:
                 contexts=contexts,
                 requested_sections=analysis.requested_sections,
                 policy_title=body.policy_title,
+                intents=analysis.intents,
             )
         except ValueError as exc:
             raise ApiError(400, "INVALID_REQUEST", str(exc)) from exc
