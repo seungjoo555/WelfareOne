@@ -156,5 +156,42 @@ class AnswerGuideTest(unittest.TestCase):
         self.assertEqual(guided.replace(answer_guide(["eligibility"]) + "\n\n", ""), base)
 
 
+class ResourceExtractionTest(unittest.TestCase):
+    def _urls(self, text, section="contact_source"):
+        found = extract_resources([PolicySection(section=section, chunk_index=0, document=text)])
+        return [item.url for item in found]
+
+    def test_scheme_less_addresses_get_https(self):
+        self.assertEqual(
+            self._urls("누리집: www.bokjiro.go.kr 또는 youth.seoul.go.kr/main."),
+            ["https://www.bokjiro.go.kr", "https://youth.seoul.go.kr/main"],
+        )
+
+    def test_email_domains_are_not_links(self):
+        self.assertEqual(self._urls("문의 help@example.com"), [])
+
+    def test_http_urls_keep_working(self):
+        self.assertEqual(self._urls("https://www.gov.kr/portal."), ["https://www.gov.kr/portal"])
+
+    def test_negative_answer_is_corrected_when_link_exists(self):
+        parsed = _GeminiAnswer(
+            answer="사이트 정보가 확인되지 않습니다.", used_sections=["contact_source"],
+            evidence=["www.bokjiro.go.kr"], grounded=False,
+        )
+        contexts = [PolicySection(section="contact_source", chunk_index=0, document="www.bokjiro.go.kr")]
+        result = AnswerService._to_result(parsed, "local:X", contexts, question="신청 사이트 알려줘")
+        self.assertTrue(result.grounded)
+        self.assertIn("바로가기", result.answer)
+
+    def test_negative_answer_is_kept_for_non_link_questions(self):
+        parsed = _GeminiAnswer(
+            answer="금액은 확인되지 않습니다.", used_sections=["contact_source"],
+            evidence=["www.bokjiro.go.kr"], grounded=True,
+        )
+        contexts = [PolicySection(section="contact_source", chunk_index=0, document="www.bokjiro.go.kr")]
+        result = AnswerService._to_result(parsed, "local:X", contexts, question="금액이 얼마야?")
+        self.assertEqual(result.answer, "금액은 확인되지 않습니다.")
+
+
 if __name__ == "__main__":
     unittest.main()

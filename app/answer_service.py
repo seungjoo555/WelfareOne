@@ -160,7 +160,16 @@ def _normalize_text(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
 
-URL_PATTERN = re.compile(r"https?://[^\s<>\"']+")
+URL_PATTERN = re.compile(
+    r"https?://[^\s<>\"']+"
+    r"|www\.[^\s<>\"']+"
+    r"|(?<![@\w.-])(?:[A-Za-z0-9-]+\.)+"
+    r"(?:go\.kr|or\.kr|co\.kr|ac\.kr|re\.kr|ne\.kr|com|net|org)"
+    r"(?:/[^\s<>\"']*)?",
+    re.IGNORECASE,
+)
+_RESOURCE_QUESTION_TERMS = ("사이트", "링크", "홈페이지", "누리집", "웹사이트", "다운로드", "파일")
+_NEGATIVE_RESOURCE_TERMS = ("확인되지 않", "확인할 수 없", "링크가 없", "사이트가 없", "정보가 없")
 
 
 def _resource_type(section: str, url: str) -> str:
@@ -193,7 +202,8 @@ def extract_resources(contexts: list[PolicySection]) -> list[PolicyResource]:
         lines = [line.strip() for line in context.document.splitlines() if line.strip()]
         for line_index, line in enumerate(lines):
             for match in URL_PATTERN.finditer(line):
-                url = match.group(0).rstrip(".,;)。、")
+                raw_url = match.group(0).rstrip('.,;)。、"]}')
+                url = raw_url if raw_url.lower().startswith(("http://", "https://")) else f"https://{raw_url}"
                 if not url or url in seen_urls:
                     continue
                 seen_urls.add(url)
@@ -284,6 +294,7 @@ class AnswerService:
                 policy_id,
                 selected,
                 resource_contexts=contexts if include_policy_resources else selected,
+                question=question,
             )
         except Exception as exc:
             raise AnswerGenerationError(
@@ -296,6 +307,7 @@ class AnswerService:
         policy_id: str,
         contexts: list[PolicySection],
         resource_contexts: list[PolicySection] | None = None,
+        question: str = "",
     ) -> AnswerResult:
         available_sections = {context.section for context in contexts}
         used_sections = [
@@ -313,12 +325,20 @@ class AnswerService:
             ):
                 evidence.append(cleaned)
         grounded = bool(parsed.grounded and used_sections and evidence)
+        resources = extract_resources(resource_contexts or contexts)
+        answer = parsed.answer.strip()
+        # 자료 링크를 물었는데 원문에서 링크를 찾았다면 "확인되지 않는다"는 답과 모순되지 않게 바로잡는다.
+        resource_question = any(term in question for term in _RESOURCE_QUESTION_TERMS)
+        contradicted = any(term in answer for term in _NEGATIVE_RESOURCE_TERMS)
+        if resource_question and resources and contradicted:
+            answer = "공식 원문에서 관련 사이트 또는 자료 링크를 확인했습니다. 아래 바로가기를 이용해 주세요."
+            grounded = True
         return AnswerResult(
-            answer=parsed.answer.strip(),
+            answer=answer,
             policy_id=policy_id,
             used_sections=used_sections,
             evidence=evidence,
-            resources=extract_resources(resource_contexts or contexts),
+            resources=resources,
             grounded=grounded,
         )
 
