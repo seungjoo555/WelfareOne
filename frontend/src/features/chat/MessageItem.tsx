@@ -4,19 +4,22 @@ import {
   ERROR_MESSAGES,
   INTERRUPTED_NOTICE,
   OPENER_TEXT,
+  QUICK_PROMPT,
+  policySelectedText,
 } from "../../constants/text";
 import { INTENT_LABELS } from "../../constants/sections";
 import type { Message } from "../../types/chat";
-import type { PolicyCandidate } from "../../types/contract";
+import type { AskIntent, PolicyCandidate } from "../../types/contract";
 import { splitByRelevance } from "../../utils/relevance";
 import { AnswerBubble } from "../policy/AnswerBubble";
 import { CandidateGroup } from "../policy/CandidateGroup";
+import { QuickQuestions } from "../policy/QuickQuestions";
 import { ExampleChips } from "./ExampleChips";
 
 export interface MessageActions {
   selectedPolicyId: string | null;
   pending: boolean;
-  onSend: (text: string) => void;
+  onSend: (text: string, intent?: AskIntent) => void;
   onSelectPolicy: (policy: PolicyCandidate) => void;
   onClearPolicy: () => void;
 }
@@ -52,6 +55,14 @@ export function MessageItem({ message, actions }: { message: Message; actions: M
       return (
         <AiRow>
           <p>{message.text}</p>
+        </AiRow>
+      );
+    case "ai_policy_selected":
+      return (
+        <AiRow>
+          <p>{policySelectedText(message.policy_title)}</p>
+          <p className="muted">{QUICK_PROMPT}</p>
+          <QuickQuestions disabled={actions.pending} onAsk={actions.onSend} />
         </AiRow>
       );
     case "ai_candidates": {

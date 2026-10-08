@@ -5,7 +5,7 @@ import { USE_MOCK } from "../../config";
 import { DISCLAIMER, SERVICE_NAME } from "../../constants/text";
 import type { ConversationState, Action } from "../../state/conversation";
 import { uid } from "../../state/conversation";
-import type { PolicyCandidate } from "../../types/contract";
+import type { AskIntent, PolicyCandidate } from "../../types/contract";
 import { loadApiKey } from "../../utils/apiKey";
 import type { ConversationHistory } from "../../state/useConversationHistory";
 import { ApiKeyDialog } from "../settings/ApiKeyDialog";
@@ -32,7 +32,7 @@ export function ChatPage({ state, dispatch, history }: Props) {
   // 저장소 값은 keyVersion이 바뀔 때(저장·삭제 후)만 다시 읽는다
   const hasKey = useMemo(() => loadApiKey() !== null, [keyVersion]);
 
-  const send = async (text: string) => {
+  const send = async (text: string, intent?: AskIntent) => {
     if (!region || pending) return;
     dispatch({ type: "USER_SEND", text });
     try {
@@ -40,6 +40,7 @@ export function ChatPage({ state, dispatch, history }: Props) {
         const res = await askPolicy(current_policy.policy_id, {
           question: text,
           policy_title: current_policy.title,
+          ...(intent ? { intent } : {}), // 자주 묻는 질문 버튼이면 질문 유형을 함께 보낸다
         });
         if (res.route !== "current_policy_question" || !res.answer) {
           dispatch({ type: "RESOLVE", message: { id: uid(), type: "ai_notice", code: "NOT_CURRENT_POLICY" } });
@@ -121,7 +122,12 @@ export function ChatPage({ state, dispatch, history }: Props) {
         </header>
 
         {current_policy && (
-          <CurrentPolicyBar policy={current_policy} onClear={() => dispatch({ type: "CLEAR_POLICY" })} />
+          <CurrentPolicyBar
+            policy={current_policy}
+            onClear={() => dispatch({ type: "CLEAR_POLICY" })}
+            pending={pending}
+            onAsk={send}
+          />
         )}
 
         <MessageList

@@ -95,9 +95,12 @@ export interface AnswerResult {
 
 // [초안] POST /policies/{policy_id}/ask
 // route가 current_policy_question이 아니면 answer는 null (CLI의 "현재 정책 질문 아님" 분기).
+// 화면의 "자주 묻는 질문" 버튼이 보내는 질문 유형(계약서 8장 intent의 일부). 있으면 서버가 질문 분석을 건너뛴다.
+export type AskIntent = "eligibility" | "benefit" | "application" | "administrative" | "required_documents" | "contact";
 export interface AskRequest {
   question: string;
   policy_title: string | null;
+  intent?: AskIntent;
 }
 export interface AskResponse {
   route: Route;

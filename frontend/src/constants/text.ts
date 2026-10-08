@@ -24,7 +24,11 @@ export const EMPTY_LOCAL_BUT_NATIONAL_TEXT =
   "선택한 지역에서는 관련도가 높은 정책을 찾지 못했어요. 전국 대상인 중앙부처 정책을 확인해 보세요.";
 export const EMPTY_NATIONAL_BUT_LOCAL_TEXT = "관련도가 높은 중앙부처 정책은 찾지 못했어요. 지역 정책을 확인해 보세요.";
 // 상황형 질문에서 거리가 먼 후보는 접어 두고 사용자가 펼쳐서 볼 수 있게 한다
-export const lowRelevanceSummary = (count: number) => `관련도가 낮은 후보 ${count}건 더 보기`;
+export const lowRelevanceSummary = (count: number) => `관련도가 낮은 후보 ${count}건 보기`;
+export const LOW_RELEVANCE_BADGE = "관련도 낮음";
+export const QUICK_QUESTIONS_LABEL = "자주 묻는 질문";
+export const policySelectedText = (title: string) => `‘${title}’ 정책을 선택했어요.`;
+export const QUICK_PROMPT = "궁금한 점을 버튼으로 바로 물어보거나, 아래 입력창에 직접 질문해 보세요.";
 export const PAGER_PREV = "이전";
 export const PAGER_NEXT = "다음";
 export const pagerStatus = (page: number, total: number) => `${page} / ${total}쪽`;

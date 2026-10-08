@@ -6,6 +6,8 @@ export type Message =
   | { id: string; type: "user_text"; text: string }
   | { id: string; type: "ai_opener" }
   | { id: string; type: "ai_text"; text: string }
+  // 정책을 선택한 직후 안내. 자주 묻는 질문 버튼이 함께 나온다(예전 기록에는 같은 문구의 ai_text로 남아 있다).
+  | { id: string; type: "ai_policy_selected"; policy_title: string }
   | {
       id: string;
       type: "ai_candidates";

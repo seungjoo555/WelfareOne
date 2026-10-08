@@ -5,6 +5,17 @@ import type { PolicyCandidate } from "../types/contract";
 // (2026-10-06 측정: 0.50 이하에서 지자체 정밀도 58%, 중앙부처 48%. 0.55까지 넓히면 관련 정책 재현율이 91~98%)
 export const LOW_RELEVANCE_DISTANCE = 0.5;
 
+// 쪽 넘김에 쓸 순서: 관련 있는 후보가 먼저, 관련도 낮은 후보가 그 뒤(우선순위에서 밀림).
+// 관련 있는 후보가 하나도 없으면 관련도 낮은 후보는 사용자가 펼치기 전까지 보여 주지 않는다.
+export function orderForPaging(
+  confident: PolicyCandidate[],
+  lowRelevance: PolicyCandidate[],
+  lowExpanded: boolean,
+): PolicyCandidate[] {
+  if (confident.length > 0) return [...confident, ...lowRelevance];
+  return lowExpanded ? lowRelevance : [];
+}
+
 // 접을 후보를 가린다. 서버가 내려준 순서는 그대로 유지한다.
 // - fold=false(정책명을 말한 질문): 거리와 상관없이 모두 보여 준다.
 // - lowRelevanceIds가 있으면(서버가 LLM으로 관련도를 판정함): 그 목록에 든 후보만 접는다. 거리는 보지 않는다.

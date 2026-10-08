@@ -118,11 +118,7 @@ export function conversationReducer(state: ConversationState, action: Action): C
         current_policy: action.policy,
         messages: [
           ...state.messages,
-          {
-            id: uid(),
-            type: "ai_text",
-            text: `‘${action.policy.title}’ 정책을 선택했어요. 지원 대상, 신청 방법 등 궁금한 점을 질문해 보세요.`,
-          },
+          { id: uid(), type: "ai_policy_selected", policy_title: action.policy.title },
         ],
       };
     case "CLEAR_POLICY":

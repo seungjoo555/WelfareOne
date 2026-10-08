@@ -1,7 +1,7 @@
 // 관련도 낮은 후보 접기 규칙 테스트. 실행: cd frontend; npm test
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { LOW_RELEVANCE_DISTANCE, splitByRelevance } from "../src/utils/relevance";
+import { LOW_RELEVANCE_DISTANCE, orderForPaging, splitByRelevance } from "../src/utils/relevance";
 import type { PolicyCandidate } from "../src/types/contract";
 
 const policy = (id: string, distance: number): PolicyCandidate => ({
@@ -83,4 +83,18 @@ test("판정 목록이 null이면 거리 규칙을 쓴다(판정 안 함·실패
 
 test("빈 목록도 안전하다", () => {
   assert.deepEqual(splitByRelevance([], true), { confident: [], lowRelevance: [] });
+});
+
+test("orderForPaging: 관련 후보가 앞, 관련도 낮은 후보가 뒤에 이어진다(우선순위 유지)", () => {
+  const confident = [policy("a", 0.2), policy("b", 0.3)];
+  const low = [policy("c", 0.4), policy("d", 0.5)];
+  assert.deepEqual(ids(orderForPaging(confident, low, false)), ["a", "b", "c", "d"]);
+  assert.deepEqual(ids(orderForPaging(confident, low, true)), ["a", "b", "c", "d"]);
+});
+
+test("orderForPaging: 관련 후보가 없으면 낮은 후보는 펼치기 전까지 숨긴다", () => {
+  const low = [policy("c", 0.4), policy("d", 0.5)];
+  assert.deepEqual(orderForPaging([], low, false), []);
+  assert.deepEqual(ids(orderForPaging([], low, true)), ["c", "d"]);
+  assert.deepEqual(orderForPaging([], [], true), []);
 });

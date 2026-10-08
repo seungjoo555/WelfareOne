@@ -7,6 +7,7 @@ import type {
   Regions,
   SearchRequest,
   SearchResponse,
+  SectionKey,
 } from "../types/contract";
 
 // 개발용 가짜 응답이다. 정책 이름과 내용은 모두 예시이며 실제 정책이 아니다.
@@ -15,9 +16,10 @@ import type {
 //   "에러"     → 429 LLM_RATE_LIMITED
 //   "날씨"     → (정책 선택 후) 현재 정책 질문이 아님 분기
 //   "근거없음" → (정책 선택 후) grounded=false 답변
-//   "관련낮음" → 관련도 낮은 후보(거리 0.50 초과)가 "더 보기"로 접히는지 확인
-//   "재판정"   → 서버가 LLM으로 판정한 응답(relevance_checked)에서 판정 결과대로 접히는지 확인
-//   "더보기"   → 지자체 8개·중앙부처 5개: 3개씩 "다음/이전" 쪽 넘김 확인
+//   "관련낮음" → 관련도 낮은 후보(거리 0.50 초과)가 관련 후보 뒤에 "관련도 낮음" 배지로 이어지는지 확인(관련 후보가 없으면 눌러서 펼침)
+//   "재판정"   → 서버가 LLM으로 판정한 응답(relevance_checked)에서 판정 결과대로 순서가 나뉘는지 확인
+//   "더보기"   → 지자체 8개(관련 4 + 낮음 4)·중앙부처 5개(관련 3 + 낮음 2): 3개씩 "다음/이전" 쪽 넘김, 관련도 낮은 후보가 뒤에 이어지는지 확인
+//   (정책 선택 후) 자주 묻는 질문 버튼 → intent가 있으면 유형별 구성 예시 답변
 //   "키없음"   → 401 API_KEY_REQUIRED (API 키 입력 창이 열리는지 확인)
 //   "키오류"   → 401 INVALID_API_KEY
 
@@ -51,6 +53,34 @@ const candidate = (
   reasons: ["벡터 유사도 0.700", "검색 범위 시군구"], // 실제 형식(개발용 문구, 화면에 표시하지 않음)
   ...partial,
 });
+
+// "자주 묻는 질문" 버튼(intent)의 예시 답변. 실제 서버는 질문 유형별 구성(소제목 + 불릿) 순서로 답한다.
+const INTENT_ANSWERS: Record<string, { text: string; sections: SectionKey[] }> = {
+  eligibility: {
+    text: "**누가 대상인가요**\n- 거주 지역 청년, 연령 기준 19세 이상 39세 이하\n\n**제외·우선 대상**\n- 제공된 공식 자료에서는 확인되지 않습니다.\n\n**신청 전에 확인할 점**\n- 거주 요건과 연령은 신청일 기준입니다. (mock 데이터)",
+    sections: ["target_criteria"],
+  },
+  benefit: {
+    text: "**무엇을 지원하나요**\n- 월세 일부 지원\n\n**금액·횟수·기간**\n- 월 최대 20만원, 최장 24개월\n\n**지급 방식**\n- 제공된 공식 자료에서는 확인되지 않습니다. (mock 데이터)",
+    sections: ["benefit"],
+  },
+  application: {
+    text: "**어디서 어떻게 신청하나요**\n- 온라인 또는 주민센터 방문 신청\n\n**절차**\n1. 신청서 작성\n2. 서류 제출\n3. 심사 후 안내\n\n**신청 시기**\n- 신청 기간 안내 참고 (mock 데이터)",
+    sections: ["application", "administrative"],
+  },
+  administrative: {
+    text: "**신청 기간**\n- 매년 3월~5월 (mock 데이터)\n\n**사업 기간·마감**\n- 예산 소진 시 조기 마감될 수 있습니다.\n\n**상시·연중 여부**\n- 제공된 공식 자료에서는 확인되지 않습니다.",
+    sections: ["administrative", "contact_source"],
+  },
+  required_documents: {
+    text: "**제출 서류**\n- 신청서 1부, 신분증 사본\n\n**서식·첨부파일**\n- 아래 버튼에서 신청서 양식을 받을 수 있어요.\n\n**발급처·유의사항**\n- 제공된 공식 자료에서는 확인되지 않습니다. (mock 데이터)",
+    sections: ["documents", "application"],
+  },
+  contact: {
+    text: "**문의 기관**\n- 해당 지자체 복지과\n\n**전화·누리집**\n- 000-0000-0000, https://example.com/policy\n\n**접수 장소**\n- 제공된 공식 자료에서는 확인되지 않습니다. (mock 데이터)",
+    sections: ["contact_source"],
+  },
+};
 
 const DETAIL_TEXT = (title: string): PolicyDetail => ({
   policy_id: "",
@@ -123,7 +153,11 @@ export const handlers = [
       const paged: SearchResponse = {
         analysis,
         relevance_checked: true,
-        low_relevance_ids: [],
+        // 지역 1~4순위·중앙 1~3순위는 관련 판정, 그 뒤는 "관련도 낮음"으로 이어지는지 확인한다
+        low_relevance_ids: [
+          ...[5, 6, 7, 8].map((n) => `local:MOCKPAGE${n}`),
+          ...[4, 5].map((n) => `national:MOCKPAGE${n}`),
+        ],
         local_policies: many("지역", 8, "시군구", regionText, regionText),
         national_policies: many("중앙", 5, "중앙부처", "", "보건복지부"),
       };
@@ -198,6 +232,26 @@ export const handlers = [
         answer: null,
       };
       return HttpResponse.json(notCurrent);
+    }
+    const byIntent = body.intent ? INTENT_ANSWERS[body.intent] : undefined;
+    if (byIntent) {
+      // 버튼 질문: 서버가 질문 분석을 건너뛰고 해당 유형으로 바로 답한다
+      const quick: AskResponse = {
+        route: "current_policy_question",
+        intents: [body.intent!],
+        answer: {
+          answer: byIntent.text,
+          policy_id: policyId,
+          used_sections: byIntent.sections,
+          evidence: [],
+          resources:
+            body.intent === "required_documents"
+              ? [{ label: "신청서 양식", resource_type: "attachment", url: "https://example.com/download/form.hwp" }]
+              : [],
+          grounded: true,
+        },
+      };
+      return HttpResponse.json(quick);
     }
     const grounded = !body.question.includes("근거없음");
     const result: AskResponse = {

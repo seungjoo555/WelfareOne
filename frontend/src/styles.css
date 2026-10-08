@@ -211,6 +211,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .pager-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .pager-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.quick-questions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.quick-questions.compact { margin: 6px 0 2px; }
+.quick-questions.compact .quick-chip { padding: 3px 10px; font-size: 0.82em; }
+.candidate-badges { display: flex; gap: 4px; flex: none; }
+.badge-low { background: var(--warn-bg); color: var(--warn-text); }
+.candidate.low { border-style: dashed; }
+.low-relevance-toggle { margin: 2px 0 6px; }
 .pager-status { font-size: 0.85em; color: var(--muted); min-width: 4.5em; text-align: center; }
 .candidate {
   text-align: left; display: flex; flex-direction: column; gap: 2px; width: 100%;
