@@ -1,0 +1,29 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: memberJoin
+  datasource:
+    driver-class-name: oracle.jdbc.OracleDriver
+    url: jdbc:oracle:thin:@localhost:1521/XE
+    username: welfareone
+    password: welfareone_password
+
+mybatis:
+  mapper-locations: classpath:mapper/**/*.xml
+  type-aliases-package: com.welfareone.memberjoin.domain
+  configuration:
+    map-underscore-to-camel-case: true # DB의 snake_case와 Java의 camelCase 자동 매핑
+    jdbc-type-for-null: null
+
+jwt:
+  secret: c29tZS12ZXJ5LXNlY3VyZS1hbmQtbG9uZy1zZWNyZXQta2V5LWZvci13ZWxmYXJlb25lLWp3dC1hdXRoCg==
+  expiration-ms: 86400000 # 24시간
+
+security:
+  aes:
+    master-key: WelfareOneAESKey32BytesLengthSec! # 32바이트 AES 마스터 키
+
+fastapi:
+  base-url: http://localhost:8000

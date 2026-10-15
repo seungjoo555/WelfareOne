@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.welfareone.memberjoin.mapper.UserApiKeyMapper">
+
+    <insert id="upsertApiKey" parameterType="com.welfareone.memberjoin.domain.UserApiKey">
+        MERGE INTO USER_API_KEYS target
+        USING (SELECT #{userId} AS user_id FROM dual) src
+        ON (target.user_id = src.user_id)
+        WHEN MATCHED THEN
+            UPDATE SET
+                encrypted_key = #{encryptedKey},
+                iv_salt = #{ivSalt},
+                is_active = 'Y',
+                updated_at = CURRENT_TIMESTAMP
+        WHEN NOT MATCHED THEN
+            INSERT (
+                user_id,
+                encrypted_key,
+                iv_salt,
+                is_active,
+                created_at,
+                updated_at
+            ) VALUES (
+                #{userId},
+                #{encryptedKey},
+                #{ivSalt},
+                'Y',
+                CURRENT_TIMESTAMP,
+                CURRENT_TIMESTAMP
+            )
+    </insert>
+
+    <select id="findByUserId" resultType="com.welfareone.memberjoin.domain.UserApiKey">
+        SELECT
+            key_id,
+            user_id,
+            encrypted_key,
+            iv_salt,
+            is_active,
+            created_at,
+            updated_at
+        FROM USER_API_KEYS
+        WHERE user_id = #{userId} AND is_active = 'Y'
+    </select>
+
+    <delete id="deleteByUserId">
+        DELETE FROM USER_API_KEYS
+        WHERE user_id = #{userId}
+    </delete>
+
+</mapper>
+

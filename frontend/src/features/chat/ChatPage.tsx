@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { askPolicy, searchPolicies } from "../../api/policies";
 import { toErrorCode } from "../../api/client";
 import { USE_MOCK } from "../../config";
@@ -14,6 +14,9 @@ import { ChatInput } from "./ChatInput";
 import { ConversationList } from "./ConversationList";
 import { CurrentPolicyBar } from "./CurrentPolicyBar";
 import { MessageList } from "./MessageList";
+import { getMe, removeAuthToken, UserProfile } from "../../api/auth";
+import { fetchServerSessions, fetchServerSessionDetail, ServerSessionSummary } from "../../api/history";
+import { CommonLoginModal } from "../portal/CommonLoginModal";
 
 interface Props {
   state: ConversationState;
@@ -29,8 +32,29 @@ export function ChatPage({ state, dispatch, history }: Props) {
     reason: null,
   });
   const [keyVersion, setKeyVersion] = useState(0);
-  // 저장소 값은 keyVersion이 바뀔 때(저장·삭제 후)만 다시 읽는다
   const hasKey = useMemo(() => loadApiKey() !== null, [keyVersion]);
+
+  // 회원 인증 상태
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [serverSessions, setServerSessions] = useState<ServerSessionSummary[]>([]);
+  const [activeServerSessionId, setActiveServerSessionId] = useState<string | null>(null);
+
+  // 초기 마운트 시 로그인 확인
+  useEffect(() => {
+    getMe().then((profile) => {
+      if (profile) {
+        setUser(profile);
+        fetchServerSessions().then(setServerSessions).catch(() => {});
+      }
+    });
+  }, []);
+
+  const refreshSessions = () => {
+    if (user) {
+      fetchServerSessions().then(setServerSessions).catch(() => {});
+    }
+  };
 
   const send = async (text: string) => {
     if (!region || pending) return;
@@ -59,12 +83,33 @@ export function ChatPage({ state, dispatch, history }: Props) {
           },
         });
       }
+      refreshSessions();
     } catch (error) {
       const code = toErrorCode(error);
       dispatch({ type: "RESOLVE", message: { id: uid(), type: "ai_error", code } });
-      // 키 문제면 입력 창을 바로 열어 준다. 입력 후 사용자가 질문을 다시 보낸다.
       if (code === "API_KEY_REQUIRED") setKeyDialog({ open: true, reason: "required" });
       if (code === "INVALID_API_KEY") setKeyDialog({ open: true, reason: "invalid" });
+    }
+  };
+
+  const handleSelectServerSession = async (sessionId: string) => {
+    try {
+      const detail = await fetchServerSessionDetail(sessionId);
+      setActiveServerSessionId(sessionId);
+      // 세션의 지역 및 나이 설정
+      if (detail.session) {
+        dispatch({
+          type: "START",
+          region: {
+            level1: detail.session.region_level1,
+            level2: detail.session.region_level2 || "",
+          },
+          age: detail.session.age,
+        });
+      }
+      setSidebarOpen(false);
+    } catch (e: any) {
+      alert("상담 기록 로드 실패: " + e.message);
     }
   };
 
@@ -73,19 +118,111 @@ export function ChatPage({ state, dispatch, history }: Props) {
   return (
     <div className={`app${sidebarOpen ? " sidebar-open" : ""}`}>
       <aside className="sidebar">
-        <div className="brand">{SERVICE_NAME}</div>
+        {/* 상단 브랜드: 비로그인(WelfareOne) vs 로그인(사용자 이름 + 로그아웃) */}
+        {!user ? (
+          <div className="brand">{SERVICE_NAME}</div>
+        ) : (
+          <div
+            className="brand user-brand"
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              paddingRight: "8px",
+            }}
+          >
+            <span style={{ fontSize: "16px", fontWeight: "bold", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={user.email}>
+              👤 {user.nickname} 님
+            </span>
+            <button
+              type="button"
+              className="btn small"
+              style={{ fontSize: "11px", padding: "2px 8px", background: "none", border: "1px solid var(--border-color, #d1d5db)" }}
+              onClick={() => {
+                removeAuthToken();
+                setUser(null);
+                setServerSessions([]);
+                setActiveServerSessionId(null);
+              }}
+            >
+              로그아웃
+            </button>
+          </div>
+        )}
+
         <button
           type="button"
           className="btn"
           disabled={pending}
           onClick={() => {
             dispatch({ type: "NEW_CHAT" });
+            setActiveServerSessionId(null);
             setSidebarOpen(false);
           }}
         >
           + 새 상담
         </button>
-        <ConversationList history={history} disabled={pending} onSelected={() => setSidebarOpen(false)} />
+
+        {/* 이전 대화 목록: 비로그인(LocalStorage) vs 로그인(Oracle DB 세션 목록) */}
+        {!user ? (
+          <ConversationList history={history} disabled={pending} onSelected={() => setSidebarOpen(false)} />
+        ) : (
+          <nav className="history" aria-label="클라우드 상담 기록">
+            <h2 className="history-heading">저장된 대화 기록 (Oracle DB)</h2>
+            {serverSessions.length === 0 ? (
+              <p className="muted history-empty">저장된 상담 기록이 없습니다.</p>
+            ) : (
+              <ul className="history-list">
+                {serverSessions.map((s) => {
+                  const active = s.session_id === activeServerSessionId;
+                  return (
+                    <li key={s.session_id} className={`history-item${active ? " active" : ""}`}>
+                      <button
+                        type="button"
+                        className="history-open"
+                        disabled={pending}
+                        title={s.title}
+                        onClick={() => handleSelectServerSession(s.session_id)}
+                      >
+                        <span className="history-title">{s.title}</span>
+                        <span className="history-meta">
+                          {s.region_level1} {s.region_level2}
+                          {s.age === null ? "" : ` · ${s.age}세`}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </nav>
+        )}
+
+        {/* 사이드바 하단: 비로그인(로그인/가입 버튼) vs 로그인(클라우드 보관 배너) */}
+        {!user ? (
+          <div style={{ padding: "12px", borderTop: "1px solid var(--border-color, #e5e7eb)" }}>
+            <button
+              type="button"
+              className="btn"
+              style={{
+                width: "100%",
+                background: "#059669",
+                color: "white",
+                fontWeight: "bold",
+                padding: "8px",
+                borderRadius: "8px",
+              }}
+              onClick={() => setAuthModalOpen(true)}
+            >
+              로그인 / 회원가입
+            </button>
+          </div>
+        ) : (
+          <div style={{ padding: "10px 14px", fontSize: "11px", color: "var(--text-muted, #6b7280)", borderTop: "1px solid var(--border-color, #e5e7eb)" }}>
+            ☁️ 상담 기록이 Oracle DB에 안전하게 보관 중입니다.
+          </div>
+        )}
+
         <div className="sidebar-bottom">
           <ThemeToggle />
         </div>
@@ -114,7 +251,7 @@ export function ChatPage({ state, dispatch, history }: Props) {
             className="btn small"
             onClick={() => setKeyDialog({ open: true, reason: null })}
           >
-            API 키{hasKey ? " ✓" : ""}
+            API 키{hasKey || user?.has_api_key ? " ✓" : ""}
           </button>
         </header>
 
@@ -146,11 +283,25 @@ export function ChatPage({ state, dispatch, history }: Props) {
         </footer>
       </section>
 
+      {/* API 키 설정 다이얼로그 */}
       <ApiKeyDialog
         open={keyDialog.open}
         reason={keyDialog.reason}
         onClose={() => setKeyDialog({ open: false, reason: null })}
         onChange={() => setKeyVersion((v) => v + 1)}
+      />
+
+      {/* 공통 로그인/회원가입/비회원 시작 2단 모달 */}
+      <CommonLoginModal
+        open={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onLoginSuccess={(loggedUser) => {
+          setUser(loggedUser);
+          fetchServerSessions().then(setServerSessions).catch(() => {});
+        }}
+        onGuestStart={(newRegion, newAge) => {
+          dispatch({ type: "START", region: newRegion, age: newAge });
+        }}
       />
     </div>
   );
