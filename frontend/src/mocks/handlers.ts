@@ -99,6 +99,11 @@ const DETAIL_TEXT = (title: string): PolicyDetail => ({
 });
 
 export const handlers = [
+  // 기본은 "서버 AI 없음"(키 필수). 질문의 키워드로 상황을 바꾸는 다른 mock과 달리 설정은 고정이다.
+  http.get("/api/config", () =>
+    HttpResponse.json({ server_llm: false, server_llm_provider: null, user_key_provider: "gemini" }),
+  ),
+
   http.get("/api/regions", async () => {
     await delay(300);
     return HttpResponse.json(REGIONS);

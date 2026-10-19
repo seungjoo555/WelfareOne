@@ -34,6 +34,13 @@ export interface RegionSelection {
 // GET /regions 응답: { "서울특별시": ["관악구", ...], ... }
 export type Regions = Record<string, string[]>;
 
+// GET /config: 서버가 키 없이도 AI 요청을 처리하는지(계약서 제안 8-3). 호출에 실패하면 "키 필수"로 본다.
+export interface ServerConfig {
+  server_llm: boolean;
+  server_llm_provider: string | null;
+  user_key_provider: string;
+}
+
 export interface PolicyCandidate {
   policy_id: string; // 예: "local:WLF00006618"
   title: string;
