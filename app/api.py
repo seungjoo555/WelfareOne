@@ -68,6 +68,19 @@ class Services:
     reranker: Any | None = None
 
 
+def _warm_up(search: Any, reranker: Any | None) -> None:
+    """서버 시작 때 임베딩·리랭커를 한 번 돌려 첫 요청의 초기화 지연(실측 30초 이상)을 없앤다. 실패해도 서버는 뜬다."""
+    try:
+        from .models import RegionSelection
+
+        result = search.search_policies("청년 지원", RegionSelection(level1="서울특별시", level2=""))
+        pool = [*result.local_policies, *result.national_policies]
+        if reranker is not None and pool:
+            reranker.rerank("청년 지원", pool)
+    except Exception as exc:  # noqa: BLE001 - 워밍업은 부가 단계
+        logger.warning("warm-up skipped: %s", type(exc).__name__)
+
+
 def build_services() -> Services:
     # 무거운 모듈(torch, sentence-transformers)은 실제 서버를 띄울 때만 불러온다.
     from .answer_service import AnswerService
@@ -92,10 +105,12 @@ def build_services() -> Services:
             logger.warning("reranker disabled: %s", type(exc).__name__)
 
     repository = PolicyRepository()
+    search = PolicySearchService(repository)
+    _warm_up(search, reranker)
     return Services(
         reranker=reranker,
         repository=repository,
-        search=PolicySearchService(repository),
+        search=search,
         # 폴백을 켠 경우에만 서버 키로 만든다(이때 GEMINI_API_KEY가 없으면 여기서 바로 실패한다).
         analyzer=QuestionAnalyzer() if allow_server_key else None,
         answers=AnswerService() if allow_server_key else None,
