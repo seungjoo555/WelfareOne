@@ -19,6 +19,8 @@ SITUATION_RESCUE_MAX_DISTANCE = 0.60
 SITUATION_REGION_BONUS_SCALE = 0.0
 # 프런트 `src/utils/relevance.ts`의 LOW_RELEVANCE_DISTANCE와 같은 값이어야 한다(기본으로 보여 줄 관련도 기준).
 SITUATION_CONFIDENT_DISTANCE = 0.50
+# 리랭커를 쓸 때 범위(지자체/중앙)별로 1차 검색에서 넓게 가져오는 후보 수. 리랭커가 이 풀을 재정렬하고 상위만 판정기에 넘긴다.
+RERANK_POOL_PER_SCOPE = 30
 
 
 def search_options(route: str | None) -> dict[str, float]:

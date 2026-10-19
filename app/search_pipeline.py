@@ -12,7 +12,7 @@ from typing import Any
 
 from .models import PolicyCandidate, PolicySearchResult, QuestionAnalysis, RegionSelection
 from .relevance_judge import POOL_PER_SCOPE, rerank_with_judge
-from .search_profiles import SITUATION_RESCUE_MAX_DISTANCE, search_options
+from .search_profiles import RERANK_POOL_PER_SCOPE, SITUATION_RESCUE_MAX_DISTANCE, search_options
 
 # 기존 API 로거 이름을 유지한다(테스트와 운영 로그 필터가 이 이름을 쓴다).
 logger = logging.getLogger("welfareone.api")
@@ -70,6 +70,21 @@ def _search(search_service: Any, queries: list[str], region: RegionSelection, kw
     )
 
 
+def _rerank_result(reranker: Any, query: str, result: Any, keep: int) -> Any:
+    """지자체+중앙부처 후보 풀을 리랭커로 재정렬하고 범위별 상위 `keep`개만 남긴다.
+
+    리랭커 점수는 임계값이 아니라 순서(판정기에 넘길 상위 후보 선택)에만 쓴다.
+    범위는 섞어 정렬해도 결과를 다시 나누므로 계약서 9장 규칙 1(지자체/중앙부처를 한 순위로 섞지 않음)을 지킨다.
+    """
+    pool = [*result.local_policies, *result.national_policies]
+    if not pool:
+        return result
+    ranked = reranker.rerank(query, pool)
+    local = [item for item in ranked if item.metadata.get("source") == "local"][:keep]
+    national = [item for item in ranked if item.metadata.get("source") == "national"][:keep]
+    return PolicySearchResult(local_policies=local, national_policies=national)
+
+
 def run_search(
     analysis: QuestionAnalysis,
     search_service: Any,
@@ -77,8 +92,12 @@ def run_search(
     age: int | None,
     question: str,
     judge: Any | None = None,
+    reranker: Any | None = None,
 ) -> SearchOutcome:
     """검색하고, `judge`가 있으며 상황형 질문이면 후보를 LLM으로 다시 판정한다.
+
+    상황형 질문에 `reranker`가 있으면 후보 풀을 넓게(범위별 RERANK_POOL_PER_SCOPE개) 가져와 리랭커로 재정렬한 뒤
+    상위 후보만 다음 단계로 넘긴다. 리랭커가 실패하면 재정렬 없이 거리 기반 상위 후보를 쓴다.
 
     판정이 실패해도 오류가 아니라 거리 기반 결과(후보 풀 전체, 거리순)로 대신하고 `relevance_checked=False`를 돌려준다.
     검색 결과가 없는 것도 오류가 아니라 빈 목록이다(계약서 9장 검색 규칙 5).
@@ -86,7 +105,9 @@ def run_search(
     situation = analysis.route == "situation_search"
     use_judge = judge is not None and situation
     # 판정할 때는 후보를 넉넉히(범위별 POOL_PER_SCOPE개) 뽑는다
-    pool_options = {"local_top_k": POOL_PER_SCOPE, "national_top_k": POOL_PER_SCOPE} if use_judge else {}
+    use_reranker = reranker is not None and situation
+    pool_size = RERANK_POOL_PER_SCOPE if use_reranker else POOL_PER_SCOPE
+    pool_options = {"local_top_k": pool_size, "national_top_k": pool_size} if (use_judge or use_reranker) else {}
     queries = search_queries(analysis, question)
     kwargs: dict[str, Any] = {
         "age": age,
@@ -107,6 +128,13 @@ def run_search(
         rescued = bool(result.local_policies or result.national_policies)
         if rescued:
             logger.info("search rescued with relaxed distance limit")
+    if use_reranker:
+        keep = POOL_PER_SCOPE if use_judge else DEFAULT_TOP_K
+        try:
+            result = _rerank_result(reranker, analysis.search_query, result, keep)
+        except Exception as exc:  # noqa: BLE001 - 리랭커는 부가 단계: 실패하면 거리순 상위 후보를 쓴다
+            logger.warning("reranker failed (%s); falling back to distance ranking", type(exc).__name__)
+            result = PolicySearchResult(result.local_policies[:keep], result.national_policies[:keep])
     if not use_judge:
         return SearchOutcome(result.local_policies, result.national_policies, rescued=rescued)
 

@@ -48,6 +48,7 @@ ALLOW_SERVER_KEY_ENV = "WELFAREONE_ALLOW_SERVER_KEY"
 # 상황형 질문의 검색 후보를 LLM으로 다시 판정할지 여부. 기본은 켜짐이고 0/false/no/off로 끈다.
 # 켜면 검색 한 번에 Gemini 호출이 1회 늘고 응답이 1~3초 늦어진다. 실패하면 거리 기반 결과로 대신한다.
 LLM_RERANK_ENV = "WELFAREONE_LLM_RERANK"
+RERANKER_ENV = "WELFAREONE_RERANKER"  # 0이면 리랭커 모델을 불러오지 않는다
 
 
 @dataclass
@@ -63,6 +64,8 @@ class Services:
     answers_factory: Callable[[str], Any] | None = None  # 사용자 키 -> AnswerService
     # 분석기 -> RelevanceJudge(분석기의 Gemini 클라이언트를 재사용). None이면 LLM 관련도 재판정을 하지 않는다.
     relevance_judge_factory: Callable[[Any], Any] | None = None
+    # RerankerService. 상황형 질문의 후보 풀을 재정렬한다. None이면 쓰지 않는다(모델 로딩 실패 시도 포함).
+    reranker: Any | None = None
 
 
 def build_services() -> Services:
@@ -79,8 +82,18 @@ def build_services() -> Services:
     allow_server_key = os.getenv(ALLOW_SERVER_KEY_ENV, "").strip().lower() in {"1", "true", "yes"}
     rerank_enabled = os.getenv(LLM_RERANK_ENV, "1").strip().lower() not in {"0", "false", "no", "off"}
 
+    reranker = None
+    if os.getenv(RERANKER_ENV, "1").strip().lower() not in {"0", "false", "no", "off"}:
+        try:
+            from .reranker_service import RerankerService
+
+            reranker = RerankerService()  # 시작 때 한 번만 로드한다
+        except Exception as exc:  # noqa: BLE001 - 모델이 없어도 서버는 거리 기반 검색으로 동작해야 한다
+            logger.warning("reranker disabled: %s", type(exc).__name__)
+
     repository = PolicyRepository()
     return Services(
+        reranker=reranker,
         repository=repository,
         search=PolicySearchService(repository),
         # 폴백을 켠 경우에만 서버 키로 만든다(이때 GEMINI_API_KEY가 없으면 여기서 바로 실패한다).
@@ -248,7 +261,9 @@ def create_app(services: Services | None = None) -> FastAPI:
         judge = None
         if analysis.route == "situation_search" and services.relevance_judge_factory is not None:
             judge = services.relevance_judge_factory(analyzer)
-        outcome = run_search(analysis, services.search, region, body.age, body.question, judge)
+        outcome = run_search(
+            analysis, services.search, region, body.age, body.question, judge, reranker=services.reranker
+        )
         local_policies, national_policies = outcome.local_policies, outcome.national_policies
         return {
             "analysis": {
