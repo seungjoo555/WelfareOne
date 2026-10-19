@@ -35,3 +35,9 @@ data/evaluation/labeling/labeling_key_PRIVATE.csv
 data/raw/*/detail_prev/
 data/raw/*/list_prev_*/
 data/raw/*/list_snapshot/
+
+# Spring Boot(app/memberJoin) 빌드 산출물·캐시
+app/memberJoin/.gradle/
+app/memberJoin/build/
+app/memberJoin/bin/
+app/memberJoin/out/

@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.welfareone.memberjoin.mapper.UserMapper">
+
+    <insert id="insertUser" parameterType="com.welfareone.memberjoin.domain.User" useGeneratedKeys="true" keyProperty="userId" keyColumn="user_id">
+        INSERT INTO USERS (
+            email,
+            password_hash,
+            nickname,
+            role,
+            default_region_level1,
+            default_region_level2,
+            default_age,
+            created_at,
+            updated_at
+        ) VALUES (
+            #{email},
+            #{passwordHash},
+            #{nickname},
+            COALESCE(#{role}, 'ROLE_USER'),
+            #{defaultRegionLevel1, jdbcType=VARCHAR},
+            #{defaultRegionLevel2, jdbcType=VARCHAR},
+            #{defaultAge, jdbcType=INTEGER},
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP
+        )
+    </insert>
+
+    <select id="findByEmail" resultType="com.welfareone.memberjoin.domain.User">
+        SELECT
+            user_id,
+            email,
+            password_hash,
+            nickname,
+            role,
+            default_region_level1,
+            default_region_level2,
+            default_age,
+            created_at,
+            updated_at
+        FROM USERS
+        WHERE email = #{email}
+    </select>
+
+    <select id="findById" resultType="com.welfareone.memberjoin.domain.User">
+        SELECT
+            user_id,
+            email,
+            password_hash,
+            nickname,
+            role,
+            default_region_level1,
+            default_region_level2,
+            default_age,
+            created_at,
+            updated_at
+        FROM USERS
+        WHERE user_id = #{userId}
+    </select>
+
+    <select id="countByEmail" resultType="int">
+        SELECT COUNT(*)
+        FROM USERS
+        WHERE email = #{email}
+    </select>
+
+</mapper>
+
