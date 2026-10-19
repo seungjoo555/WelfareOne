@@ -30,3 +30,8 @@ data/investigation/
 
 # 사람 라벨링 정답 키(거리·점수 포함): 라벨러에게 주거나 커밋하지 않는다
 data/evaluation/labeling/labeling_key_PRIVATE.csv
+
+# 데이터 갱신 시 바뀌기 전 옛 파일·옛 목록 보관 폴더(옛 버전은 Git 이력에 남으므로 올리지 않는다)
+data/raw/*/detail_prev/
+data/raw/*/list_prev_*/
+data/raw/*/list_snapshot/

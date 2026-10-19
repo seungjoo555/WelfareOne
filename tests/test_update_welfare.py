@@ -39,6 +39,18 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(content_digest(b"<a>\n  <b>1</b>\n</a>"), content_digest(b"<a><b>1</b></a>"))
         self.assertNotEqual(content_digest(b"<a><b>1</b></a>"), content_digest(b"<a><b>2</b></a>"))
 
+    def test_content_digest_ignores_order_of_comma_separated_list_fields(self):
+        def xml(life, provide, body):
+            return (
+                f"<d><lifeArray>{life}</lifeArray><srvPvsnNm>{provide}</srvPvsnNm><tgtrDtlCn>{body}</tgtrDtlCn></d>"
+            ).encode("utf-8")
+
+        a = xml("청년, 중장년, 노년", "실물바우처, 전자바우처", "가, 나")
+        b = xml("중장년, 청년, 노년", "전자바우처, 실물바우처", "가, 나")
+        self.assertEqual(content_digest(a), content_digest(b))
+        # 본문처럼 순서에 의미가 있는 필드는 순서가 달라지면 다른 내용이다
+        self.assertNotEqual(content_digest(a), content_digest(xml("청년, 중장년, 노년", "실물바우처, 전자바우처", "나, 가")))
+
 
 class PlanTest(unittest.TestCase):
     def setUp(self):

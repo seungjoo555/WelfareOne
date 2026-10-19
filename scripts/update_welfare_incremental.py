@@ -13,7 +13,7 @@
 - 쓰는 곳은 data/raw/<source>/ 뿐이다. data/chroma는 읽지도 쓰지도 않는다.
 - 바뀐 상세 XML은 덮어쓰기 전에 data/raw/<source>/detail_prev/<날짜>/에 옛 파일을 옮겨 둔다.
 - 목록에서 사라진 정책은 보고만 하고 파일을 지우지 않는다.
-- 인증키는 환경변수(WELFARE_API_KEY_LOCAL / WELFARE_API_KEY_NATIONAL) 또는 입력 프롬프트로만 받고, 출력·파일에 남기지 않는다.
+- 인증키는 환경변수 또는 프로젝트 .env(WELFARE_API_KEY_LOCAL / WELFARE_API_KEY_NATIONAL), 없으면 입력 프롬프트로만 받고, 출력·파일에 남기지 않는다.
 """
 
 from __future__ import annotations
@@ -90,9 +90,24 @@ def detail_last_mod(path: Path) -> str | None:
 
 
 def content_digest(xml_bytes: bytes) -> str:
-    """공백 차이를 무시한 내용 해시. 중앙부처 상세가 실제로 바뀌었는지 비교할 때 쓴다."""
-    text = re.sub(rb">\s+<", b"><", xml_bytes.strip())
-    return hashlib.sha256(text).hexdigest()
+    """상세 XML이 실제로 바뀌었는지 비교하는 해시. 공백 차이와 쉼표 목록의 나열 순서는 무시한다.
+
+    중앙부처 API는 같은 내용이어도 "청년, 중장년, 노년" ↔ "중장년, 청년, 노년"처럼 목록 항목 순서를 바꿔 보내는 일이 있어
+    (2026-10-19 실측: 갱신으로 잡힌 49건 중 대부분), 순서만 다른 것을 "수정"으로 세지 않도록 쉼표 목록은 정렬해서 비교한다.
+    """
+    try:
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError:
+        return hashlib.sha256(re.sub(rb">\s+<", b"><", xml_bytes.strip())).hexdigest()
+    parts = []
+    for element in root.iter():
+        if len(element):
+            continue
+        text = (element.text or "").strip()
+        if element.tag.endswith("Array") or element.tag == "srvPvsnNm":
+            text = ",".join(sorted(token.strip() for token in text.split(",") if token.strip()))
+        parts.append(f"{element.tag}={text}")
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
 
 
 @dataclass
@@ -291,6 +306,10 @@ def main() -> None:
     args = parser.parse_args()
 
     config = SOURCES[args.source]
+    sys.path.insert(0, str(args.root))
+    from app.env import load_env_file  # 이미 설정된 환경변수는 덮어쓰지 않는다
+
+    load_env_file(args.root / ".env")
     api_key = os.getenv(config["key_env"], "").strip() or getpass(f"{args.source} API 인증키: ").strip()
     if not api_key:
         raise SystemExit(f"인증키가 비어 있습니다. 환경변수 {config['key_env']}를 설정하거나 입력하세요.")
