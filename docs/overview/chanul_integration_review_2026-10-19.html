@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>찬울님 회원·이력 서비스 연동 점검 (2026-10-19)</title>
+<style>
+  :root { --ink:#1f2933; --muted:#52606d; --line:#cbd2d9; --brand:#0b6b5f; --soft:#effaf8; --bad:#b42318; --badbg:#fef3f2; --warn:#b54708; --warnbg:#fffaeb; --ok:#067647; --okbg:#ecfdf3; --code:#eef1f4; }
+  * { box-sizing: border-box; }
+  body { font-family: "Malgun Gothic","맑은 고딕",system-ui,sans-serif; color: var(--ink); line-height: 1.6; margin: 0; background:#f7f9fa; }
+  .wrap { max-width: 1020px; margin: 0 auto; padding: 28px 22px 60px; }
+  header h1 { font-size: 26px; color: var(--brand); margin: 0 0 4px; }
+  header .sub { color: var(--muted); margin: 0 0 18px; }
+  h2 { font-size: 19px; color: var(--brand); border-bottom: 2px solid var(--brand); padding-bottom: 4px; margin: 34px 0 12px; }
+  h3 { font-size: 15px; margin: 18px 0 6px; }
+  p { margin: 6px 0; }
+  code { font-family: Consolas, monospace; background: var(--code); padding: 0 4px; border-radius: 4px; font-size: .9em; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 13.5px; background:#fff; }
+  th, td { border: 1px solid var(--line); padding: 6px 9px; vertical-align: top; text-align: left; }
+  th { background: #e3f3f0; }
+  .box { border-left: 4px solid var(--brand); background: var(--soft); padding: 9px 14px; margin: 12px 0; border-radius: 0 6px 6px 0; }
+  .box.bad { border-color: var(--bad); background: var(--badbg); }
+  .box.warn { border-color: var(--warn); background: var(--warnbg); }
+  .tag { display:inline-block; padding:0 8px; border-radius: 10px; font-size: 12px; font-weight: bold; color:#fff; white-space: nowrap; }
+  .t-bad { background: var(--bad); } .t-warn { background: var(--warn); } .t-ok { background: var(--ok); } .t-info { background:#475467; }
+  .cards { display:grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 12px; margin: 12px 0; }
+  .card { background:#fff; border:1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .card b { display:block; font-size: 24px; }
+  .card.bad b { color: var(--bad); } .card.warn b { color: var(--warn); } .card.ok b { color: var(--ok); }
+  svg text { font-family: "Malgun Gothic",sans-serif; font-size: 12px; }
+  ol, ul { margin: 6px 0; padding-left: 22px; }
+  .small { font-size: 12.5px; color: var(--muted); }
+  @media print { body { background:#fff; } .wrap { padding: 0; } h2 { break-after: avoid; } tr { break-inside: avoid; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>찬울님 회원·이력 서비스 연동 점검</h1>
+  <p class="sub">대상 브랜치 <code>ChanUl3rd</code> (커밋 <code>f2406c0</code> "version01") · 점검일 2026-10-19 · 기준 main <code>9ad7591</code></p>
+</header>
+
+<!-- ================= 1 ================= -->
+<h2>1. 결론 한눈에 보기</h2>
+<div class="cards">
+  <div class="card ok"><b>연결 가능</b>Oracle 접속·스키마 일치 확인. 20회 반복 접속 평균 37ms</div>
+  <div class="card warn"><b>충돌 1개</b>main에 병합하면 <code>ChatPage.tsx</code> 한 파일만 직접 해결 필요</div>
+  <div class="card bad"><b>치명 문제 3건</b>그대로 연결하면 대화 저장 실패, 비밀값 노출, DB 주소 불일치</div>
+  <div class="card warn"><b>미연결 기능</b>AI 질문·답변이 Spring을 거치지 않아 DB 저장·저장된 키 사용이 동작하지 않음</div>
+</div>
+<div class="box bad">
+  <b>그대로 병합·연결하면 안 됩니다.</b> 코드는 FastAPI(내 쪽)와 계약이 대체로 맞지만, 아래 <b>치명 문제 3건</b>을 먼저 고쳐야 정상 동작합니다.
+  <ol>
+    <li><b>대화 저장이 항상 실패</b> — DB는 발신자 값으로 <code>USER</code>/<code>ASSISTANT</code>(대문자)만 허용하는데 코드는 <code>user</code>/<code>assistant</code>(소문자)를 저장합니다.</li>
+    <li><b>비밀값이 저장소에 올라가 있음</b> — <code>application.yml</code>에 DB 비밀번호, JWT 서명 키, 사용자 API 키 암호화 마스터 키가 그대로 있습니다.</li>
+    <li><b>DB 주소가 개인 PC 설정</b> — <code>localhost:1521/XE</code>, 계정 <code>welfareone</code>으로 되어 있어 팀 공용 DB(찬울님 PC)와 다릅니다.</li>
+  </ol>
+</div>
+<p><b>Oracle 연결 자체는 문제없습니다.</b> 이 PC(같은 대역)에서 읽기 전용으로 확인했고, 서버 21.3, 접속 0.04초, 테이블 4개가 설계 문서(<code>oracle_schema.sql</code>)와 일치합니다. 쓰기 시험은 팀 공용 DB의 실제 데이터를 건드릴 수 있어 하지 않았습니다.</p>
+
+<!-- ================= 2 ================= -->
+<h2>2. 찬울님이 만든 것 (쉬운 설명)</h2>
+<p>기존 Python(FastAPI) 서버 앞에 <b>Java(Spring Boot) 서버</b>를 하나 더 두고, 회원가입·로그인·상담 기록 저장을 맡기는 구조입니다. 사용자의 Gemini 키는 암호화해서 DB에 보관합니다.</p>
+<svg viewBox="0 0 1000 200" width="100%" role="img" aria-label="구조도">
+  <rect x="10" y="70" width="140" height="70" rx="8" fill="#fff" stroke="#0b6b5f"/><text x="80" y="102" text-anchor="middle">브라우저</text><text x="80" y="120" text-anchor="middle">(React 화면)</text>
+  <rect x="200" y="70" width="140" height="70" rx="8" fill="#fff" stroke="#0b6b5f"/><text x="270" y="102" text-anchor="middle">Vite 개발 서버</text><text x="270" y="120" text-anchor="middle">:5173 (길 안내)</text>
+  <rect x="530" y="10" width="200" height="86" rx="8" fill="#e3f3f0" stroke="#0b6b5f"/><text x="630" y="38" text-anchor="middle" font-weight="bold">Spring Boot :8080</text><text x="630" y="58" text-anchor="middle">회원·로그인(JWT)·키 암호화</text><text x="630" y="76" text-anchor="middle">상담 기록 · FastAPI 중계</text>
+  <rect x="530" y="116" width="200" height="74" rx="8" fill="#fff" stroke="#0b6b5f"/><text x="630" y="146" text-anchor="middle" font-weight="bold">FastAPI :8000</text><text x="630" y="166" text-anchor="middle">검색·리랭커·AI 답변 (내 쪽)</text>
+  <rect x="790" y="10" width="200" height="86" rx="8" fill="#fff" stroke="#475467"/><text x="890" y="40" text-anchor="middle" font-weight="bold">Oracle DB</text><text x="890" y="60" text-anchor="middle">찬울님 PC 172.31.57.141</text><text x="890" y="78" text-anchor="middle">USERS · API 키 · 상담</text>
+  <rect x="790" y="116" width="200" height="74" rx="8" fill="#fff" stroke="#475467"/><text x="890" y="146" text-anchor="middle" font-weight="bold">ChromaDB · Gemini/Qwen</text><text x="890" y="166" text-anchor="middle">정책 검색 DB, AI</text>
+  <line x1="150" y1="105" x2="200" y2="105" stroke="#0b6b5f"/>
+  <line x1="340" y1="90" x2="530" y2="50" stroke="#0b6b5f"/><text x="352" y="58" fill="#0b6b5f" font-size="11">/api/auth·users·history·ai</text>
+  <line x1="340" y1="120" x2="530" y2="153" stroke="#0b6b5f"/><text x="352" y="156" fill="#0b6b5f" font-size="11">그 외 /api/*</text>
+  <line x1="630" y1="96" x2="630" y2="116" stroke="#0b6b5f"/>
+  <line x1="730" y1="53" x2="790" y2="53" stroke="#475467"/>
+  <line x1="730" y1="153" x2="790" y2="153" stroke="#475467"/>
+</svg>
+<table>
+  <tr><th style="width:24%">구성</th><th>내용</th></tr>
+  <tr><td>회원·로그인</td><td><code>/api/auth/signup</code>, <code>/login</code>. 비밀번호는 BCrypt로 해시 저장, 로그인하면 24시간짜리 JWT 토큰 발급</td></tr>
+  <tr><td>Gemini 키 보관</td><td><code>/api/users/api-key</code>. 사용자 키를 AES-256-GCM으로 암호화해 DB에 저장(화면에는 다시 보여 주지 않음)</td></tr>
+  <tr><td>상담 기록</td><td><code>/api/history/sessions</code>. 목록·상세·삭제·제목 수정. 본인 세션만 접근 가능</td></tr>
+  <tr><td>AI 중계</td><td><code>/api/ai/sessions/{id}/search</code>, <code>/policies/{id}/ask</code>. 저장된 키를 풀어 FastAPI에 <code>X-Gemini-Api-Key</code> 헤더로 전달하고 질문·답변을 DB에 저장</td></tr>
+  <tr><td>프론트</td><td>로그인 창(<code>CommonLoginModal</code>), 사이드바의 "저장된 대화 기록 (Oracle DB)", Vite 길 안내(<code>vite.config.ts</code>)</td></tr>
+  <tr><td>문서</td><td><code>AUTH_AND_HISTORY_PLAN.md</code>(설계), <code>oracle_schema.sql</code>(DB 스키마), <code>function_contracts.md</code> 직접 수정</td></tr>
+</table>
+
+<!-- ================= 3 ================= -->
+<h2>3. Oracle 연결 확인 결과</h2>
+<table>
+  <tr><th style="width:28%">항목</th><th style="width:14%">판정</th><th>결과</th></tr>
+  <tr><td>네트워크</td><td><span class="tag t-ok">정상</span></td><td>172.31.57.141:1521에 연결(이 PC는 172.31.57.140, 같은 대역)</td></tr>
+  <tr><td>접속·인증</td><td><span class="tag t-ok">정상</span></td><td>서비스 이름 <code>WELFAREONE_ORACLE_DB</code>로 접속, Oracle 21.3, <code>select 1 from dual</code> 정상</td></tr>
+  <tr><td>반복 접속 안정성</td><td><span class="tag t-ok">정상</span></td><td>연결 풀 없이 20회 연속 접속·질의: 평균 37ms, 최대 59ms, 실패 0회</td></tr>
+  <tr><td>스키마 일치</td><td><span class="tag t-ok">일치</span></td><td><code>USERS</code>, <code>USER_API_KEYS</code>, <code>CHAT_SESSIONS</code>, <code>CHAT_MESSAGES</code> 4개 테이블. 이메일 UNIQUE, 사용자당 키 1개 UNIQUE, 외래키(삭제 시 연쇄), 나이 0~120 제약 모두 설계 문서와 같음</td></tr>
+  <tr><td>기본키 방식</td><td><span class="tag t-info">참고</span></td><td><code>USER_ID</code>, <code>KEY_ID</code>는 자동 증가(IDENTITY). 세션·메시지는 UUID 문자열. 트리거 없음</td></tr>
+  <tr><td>계정 권한</td><td><span class="tag t-info">참고</span></td><td><code>CREATE SESSION/TABLE/SEQUENCE</code>만 있고 자기 스키마(WELFAREONE)의 테이블만 다룸. 운영에는 충분</td></tr>
+  <tr><td>이미 들어 있는 데이터</td><td><span class="tag t-info">참고</span></td><td>USERS 7건, USER_API_KEYS 2건, CHAT_SESSIONS 3건, CHAT_MESSAGES 6건(개수만 확인, 내용은 읽지 않음)</td></tr>
+  <tr><td>연결 설정(코드)</td><td><span class="tag t-bad">불일치</span></td><td><code>application.yml</code>은 <code>jdbc:oracle:thin:@localhost:1521/XE</code>, 계정 <code>welfareone</code>(소문자). 공용 DB 주소와 계정으로 바꿔야 함(4장 B-3)</td></tr>
+</table>
+<div class="box warn"><b>한계</b> — Spring 앱 자체는 이 PC에 Gradle이 없고 저장소에도 Gradle wrapper(<code>gradlew</code>)가 없어서 <b>빌드·기동 시험을 하지 못했습니다.</b> Oracle 접속은 같은 방식(서비스 이름, 포트 1521)의 Python 드라이버로 확인했고, JDBC에서도 같은 주소 형식(<code>jdbc:oracle:thin:@호스트:1521/WELFAREONE_ORACLE_DB</code>)이면 동작할 것으로 판단합니다. 쓰기 시험(가입·메시지 저장)은 공용 DB 보호를 위해 하지 않았습니다.</div>
+
+<!-- ================= 4 ================= -->
+<h2>4. 안정성 점검 결과</h2>
+<p>판정: <span class="tag t-bad">치명</span> 그대로 연결하면 오류·보안 사고 / <span class="tag t-warn">주의</span> 동작은 하지만 고쳐야 함 / <span class="tag t-ok">양호</span></p>
+
+<h3>A. 양호한 점</h3>
+<table>
+  <tr><th style="width:28%">항목</th><th>근거</th></tr>
+  <tr><td><span class="tag t-ok">양호</span> 비밀번호 저장</td><td>BCrypt 해시(평문 저장 없음). 가입 시 비밀번호 8자 이상, 이메일 형식 검증</td></tr>
+  <tr><td><span class="tag t-ok">양호</span> 사용자 키 암호화 방식</td><td>AES-256-GCM, 저장 때마다 무작위 IV. 방식 자체는 적절</td></tr>
+  <tr><td><span class="tag t-ok">양호</span> 남의 상담 접근 차단</td><td>세션 조회·삭제·제목 수정 모두 "세션 소유자 = 로그인 사용자"를 확인</td></tr>
+  <tr><td><span class="tag t-ok">양호</span> 로그인 실패 메시지</td><td>"이메일 또는 비밀번호가 올바르지 않습니다"로 둘을 구분하지 않아 계정 추측이 어려움</td></tr>
+  <tr><td><span class="tag t-ok">양호</span> 접근 범위</td><td>가입·로그인·health 외 모든 요청에 JWT 필요, CORS는 <code>localhost:5173</code>만 허용, 세션은 서버에 저장하지 않는 방식(STATELESS)</td></tr>
+  <tr><td><span class="tag t-ok">양호</span> 오류 응답 형식</td><td>Spring 자체 오류도 계약서 17장 형식 <code>{"error":{"code","message","details"}}</code>를 따름</td></tr>
+</table>
+
+<h3>B. 치명 — 먼저 고쳐야 함</h3>
+<table>
+  <tr><th style="width:5%">#</th><th style="width:25%">문제</th><th style="width:40%">근거</th><th>조치</th></tr>
+  <tr><td>B-1</td><td><span class="tag t-bad">치명</span> 대화 저장이 항상 실패</td><td>DB 제약 <code>CK_MESSAGES_SENDER</code>는 <code>sender_type IN ('USER','ASSISTANT')</code>. 코드는 <code>AiProxyController</code>에서 <code>"user"</code>, <code>"assistant"</code>를 저장하고 <code>HistoryService</code>도 변환하지 않음. 질문 저장은 <code>try</code> 밖이라 FastAPI 호출이 끝난 뒤 <b>500 오류</b>가 나고, 답변 저장은 로그만 남기고 사라짐</td><td>저장 전에 대문자로 변환(<code>"USER"</code>/<code>"ASSISTANT"</code>). 상수로 두고 저장·조회·화면 표시 모두 통일. 저장 실패가 AI 응답을 막지 않게 질문 저장도 오류를 삼키고 로그만 남기기</td></tr>
+  <tr><td>B-2</td><td><span class="tag t-bad">치명</span> 비밀값이 Git에 올라감</td><td><code>application.yml</code>에 DB 비밀번호, <code>jwt.secret</code>, <code>security.aes.master-key</code>가 값 그대로 있음. 이미 원격 브랜치에 올라가 있어 이력에도 남음. 마스터 키를 아는 사람은 DB에 저장된 모든 사용자 Gemini 키를 복호화 가능</td><td>① 세 값을 환경변수로 옮기고(<code>${...}</code>) 파일에서 제거 ② <b>노출된 값은 모두 교체</b>(DB 비밀번호, JWT 키, AES 마스터 키) ③ AES 마스터 키를 바꾸면 이미 저장된 키 2건을 새 키로 다시 암호화하거나 삭제 후 재등록 ④ 저장소 이력에서 제거 여부 결정(7장 참고)</td></tr>
+  <tr><td>B-3</td><td><span class="tag t-bad">치명</span> DB 접속 정보가 개인 로컬용</td><td><code>jdbc:oracle:thin:@localhost:1521/XE</code>, 계정 <code>welfareone</code>. 공용 DB는 <code>172.31.57.141:1521/WELFAREONE_ORACLE_DB</code>, 계정 <code>WELFAREONE</code></td><td><code>DB_URL</code>, <code>DB_USERNAME</code>, <code>DB_PASSWORD</code> 환경변수로 받고 기본값은 비워 둠. <code>.env.example</code>에 항목만 안내</td></tr>
+</table>
+
+<h3>C. 주의 — 동작은 하지만 고쳐야 함</h3>
+<table>
+  <tr><th style="width:5%">#</th><th style="width:25%">문제</th><th style="width:40%">근거</th><th>조치</th></tr>
+  <tr><td>C-1</td><td><span class="tag t-warn">주의</span> AI 요청이 Spring을 거치지 않음</td><td>프론트의 <code>policies.ts</code>는 그대로 <code>/api/policies/search</code>, <code>/ask</code>를 호출하고 Vite가 이를 FastAPI로 바로 보냄. Spring의 <code>/api/ai/sessions/{id}/...</code>는 어디서도 호출되지 않음. 결과: <b>질문·답변이 Oracle에 저장되지 않고, 서버에 저장한 Gemini 키도 쓰이지 않음</b>(사이드바에는 목록만 보임)</td><td>로그인 상태에서는 AI 요청을 Spring 경로로 보내도록 프론트 수정. 비로그인은 기존처럼 FastAPI 직행(게스트 모드 유지)</td></tr>
+  <tr><td>C-2</td><td><span class="tag t-warn">주의</span> FastAPI 오류 코드가 사라짐</td><td><code>FastApiClientService</code>가 4xx/5xx를 모두 일반 예외로 바꿔 <code>INTERNAL_ERROR</code> 500으로 돌려줌. 그래서 프론트가 쓰는 <code>API_KEY_REQUIRED</code>, <code>INVALID_API_KEY</code>, <code>LLM_RATE_LIMITED</code>가 전달되지 않아 <b>키 입력 창과 한도 초과 안내가 동작하지 않음</b></td><td>FastAPI의 상태 코드와 <code>error</code> 본문을 그대로 전달(<code>RestClientResponseException</code>을 받아 같은 상태·본문으로 응답)</td></tr>
+  <tr><td>C-3</td><td><span class="tag t-warn">주의</span> FastAPI 호출에 시간 제한이 없음</td><td><code>RestClient.builder().baseUrl(...)</code>만 있고 연결·응답 제한 없음. AI가 응답하지 않으면 Spring 요청이 무한 대기하고 스레드가 쌓임</td><td>연결 3초, 응답 60초 정도의 제한(프론트 타임아웃 30초와 맞춰 조정). 초과 시 <code>LLM_RESPONSE_INVALID</code>/<code>INTERNAL_ERROR</code>로 응답</td></tr>
+  <tr><td>C-4</td><td><span class="tag t-warn">주의</span> 키 저장 방침이 내 쪽 설계와 충돌</td><td>계약서 제안 8-1은 "서버는 사용자 키를 저장·로깅하지 않고 요청 헤더로만 받는다"인데, 이 설계는 키를 서버 DB에 암호화 저장. 또 내 쪽에 추가한 <b>서버 기본 AI(Qwen)</b>와의 우선순위(저장된 키 → 없으면 서버 AI)를 정해야 함</td><td>팀 결정 필요: 서버 저장을 허용할지, 허용하면 8장 제안서를 "저장된 키 > 서버 AI > 안내" 순서로 수정</td></tr>
+  <tr><td>C-5</td><td><span class="tag t-warn">주의</span> 빠진 기능: 지역 목록·정책 상세·설정</td><td>Spring에는 <code>/regions</code>, <code>/policies/{id}</code>, <code>/config</code>(내가 추가)가 없고 로그인 필수. 지금은 Vite가 FastAPI로 직행해서 동작하지만, 운영에서 Spring 한 곳으로 모으면 401</td><td>운영 방식 결정(① Vite/Nginx에서 경로별 분기 유지 ② Spring이 나머지를 그대로 중계). ①이 변경이 적음</td></tr>
+  <tr><td>C-6</td><td><span class="tag t-warn">주의</span> 로그인 토큰 관리</td><td>JWT를 <code>localStorage</code>에 저장(스크립트 삽입 공격 시 탈취 위험), 서버 쪽 로그아웃·갱신 없음, 유효 24시간. 탈퇴·키 교체 시 기존 토큰이 계속 유효</td><td>당장은 유지 가능. 보완: 만료 단축+갱신, 또는 HttpOnly 쿠키. 최소한 마크다운 렌더링에 <code>rehype-raw</code>를 쓰지 않는 현재 정책을 유지(스크립트 삽입 방지)</td></tr>
+  <tr><td>C-7</td><td><span class="tag t-warn">주의</span> 가입 시 계정 존재 노출</td><td>"이미 가입된 이메일 계정입니다" 메시지로 가입 여부를 알 수 있음. 로그인 시도 횟수 제한도 없음</td><td>서비스 규모에 따라 허용 가능. 로그인 실패 횟수 제한(예: 5회/10분) 추가 권장</td></tr>
+  <tr><td>C-8</td><td><span class="tag t-warn">주의</span> AES 마스터 키 길이 처리</td><td>키 문자열을 앞 32바이트만 사용하고, 32바이트보다 짧으면 0으로 채움. 키 교체(회전) 절차 없음</td><td>시작 시 32바이트 미만이면 서버가 뜨지 않게 검증. 교체 절차 문서화</td></tr>
+  <tr><td>C-9</td><td><span class="tag t-warn">주의</span> 자동 테스트가 없음</td><td><code>src/test</code> 폴더에 파일 0개. 위 B-1 같은 문제를 잡을 장치가 없음</td><td>최소: 메시지 저장(대소문자), 세션 소유자 검증, 오류 코드 전달, 암·복호화 왕복 테스트</td></tr>
+  <tr><td>C-10</td><td><span class="tag t-warn">주의</span> 빌드 환경·저장소 정리</td><td>Gradle wrapper가 없어 팀원이 Gradle을 따로 설치해야 함. <code>.gradle/</code> 캐시와 <code>build/reports</code> 17개 파일이 커밋됨. 프로젝트 문서는 Java 17, 이 PC는 21</td><td><code>gradlew</code>를 추가하고 <code>.gradle/</code>, <code>build/</code>를 <code>.gitignore</code>에 넣고 이미 올라간 파일은 제거. JDK 버전 명시</td></tr>
+  <tr><td>C-11</td><td><span class="tag t-warn">주의</span> 두 개의 상담 기록</td><td>화면에 브라우저 저장 기록(내가 만든 제목 수정 기능 포함)과 Oracle 기록이 따로 보임. 로그인 시 어느 쪽이 기준인지, 게스트 기록을 계정으로 옮길지 정해지지 않음</td><td>정책 결정 후 화면 정리(8장 D-2)</td></tr>
+  <tr><td>C-12</td><td><span class="tag t-warn">주의</span> 내 쪽 기능 일부가 중계에서 빠짐</td><td>중계가 <code>question</code>, <code>policy_title</code>만 전달해 "자주 묻는 질문" 버튼의 <code>intent</code>(분석 단계 생략·유형별 답변 구성)가 전달되지 않음. 동작은 하되 느리고 형식이 달라짐</td><td><code>intent</code>를 그대로 전달하도록 한 줄 추가</td></tr>
+</table>
+
+<!-- ================= 5 ================= -->
+<h2>5. main에 병합할 때의 충돌</h2>
+<p>시험 병합(실제 병합 없이 계산)을 한 결과입니다.</p>
+<table>
+  <tr><th style="width:30%">파일</th><th style="width:16%">결과</th><th>내용</th></tr>
+  <tr><td><code>frontend/src/features/chat/ChatPage.tsx</code></td><td><span class="tag t-bad">충돌</span></td><td>찬울님은 로그인·서버 상담 목록을 추가, main은 자주 묻는 질문 <code>intent</code> 전달 등을 추가해 같은 영역을 수정함. <b>직접 해결 필요</b></td></tr>
+  <tr><td><code>docs/function_contracts.md</code></td><td><span class="tag t-ok">자동 병합</span></td><td>충돌은 없지만 <b>내용상 확인 필요</b>: 찬울님이 계약서 17장에 <code>/auth</code>, <code>/users</code>, <code>/sessions</code> 계열을 직접 추가함. 팀 합의 문서이므로 내용 검토 후 반영</td></tr>
+  <tr><td><code>frontend/vite.config.ts</code></td><td><span class="tag t-ok">자동 병합</span></td><td>길 안내(프록시) 규칙 추가. main 쪽 변경과 겹치지 않음</td></tr>
+  <tr><td><code>app/memberJoin/**</code> 전체</td><td><span class="tag t-ok">새 폴더</span></td><td>Python 코드와 파일이 겹치지 않음(Java 프로젝트 별도 폴더)</td></tr>
+</table>
+<p class="small">찬울님 브랜치는 이전 main(<code>f7fe796</code>)에서 갈라진 커밋 1개(<code>version01</code>)라 이력 충돌 위험은 작습니다. 다만 위 B-2 때문에 이 커밋을 그대로 main에 넣으면 비밀값이 main 이력에도 남습니다.</p>
+
+<!-- ================= 6 ================= -->
+<h2>6. 추가로 해야 할 작업 (우선순위)</h2>
+<table>
+  <tr><th style="width:8%">순위</th><th style="width:30%">작업</th><th style="width:36%">세부</th><th>담당 영역</th></tr>
+  <tr><td><span class="tag t-bad">P0</span></td><td>비밀값 제거·교체</td><td>환경변수 전환, 노출된 DB 비밀번호·JWT 키·AES 마스터 키 교체, 저장된 키 2건 처리</td><td>Spring 설정, 인프라</td></tr>
+  <tr><td><span class="tag t-bad">P0</span></td><td>메시지 발신자 대소문자 수정</td><td><code>USER</code>/<code>ASSISTANT</code>로 저장, 질문 저장 실패가 AI 응답을 막지 않게 처리</td><td>Spring <code>AiProxyController</code>, <code>HistoryService</code></td></tr>
+  <tr><td><span class="tag t-bad">P0</span></td><td>공용 DB 접속 설정</td><td><code>DB_URL</code> 등 환경변수화, 팀 가이드 작성</td><td>Spring 설정, <code>.env.example</code></td></tr>
+  <tr><td><span class="tag t-warn">P1</span></td><td>오류 코드·시간 제한 전달</td><td>FastAPI 오류 본문 그대로 전달, 연결·응답 제한 설정</td><td>Spring <code>FastApiClientService</code>, <code>WebClientConfig</code></td></tr>
+  <tr><td><span class="tag t-warn">P1</span></td><td>AI 요청을 Spring 경유로 전환</td><td>로그인 시 <code>/api/ai/sessions/{id}/...</code> 사용, 세션 자동 생성, <code>intent</code> 전달, 게스트는 기존 경로 유지</td><td>프론트 <code>api/policies.ts</code>, <code>ChatPage.tsx</code></td></tr>
+  <tr><td><span class="tag t-warn">P1</span></td><td>충돌 해결과 병합</td><td><code>ChatPage.tsx</code> 수동 병합, 계약서 변경 검토</td><td>프론트, 문서</td></tr>
+  <tr><td><span class="tag t-warn">P1</span></td><td>서버 키 저장 방침 결정</td><td>8-1 제안서 수정, 키 우선순위(저장된 키 > 서버 Qwen > 안내) 정의, <code>/config</code>와 키 입력 창 안내 정리</td><td>계약서 제안서, 프론트 <code>StartForm</code></td></tr>
+  <tr><td><span class="tag t-warn">P1</span></td><td>자동 테스트 추가</td><td>메시지 저장·소유자 검증·오류 전달·암복호화 왕복·가입 중복</td><td>Spring <code>src/test</code></td></tr>
+  <tr><td><span class="tag t-info">P2</span></td><td>빌드 환경 정리</td><td><code>gradlew</code> 추가, 캐시 파일 제거와 <code>.gitignore</code>, JDK 버전 명시, 실행 가이드</td><td>저장소</td></tr>
+  <tr><td><span class="tag t-info">P2</span></td><td>상담 기록 통합</td><td>로그인 시 기준 저장소 결정, 게스트 기록 이전, 제목 수정·삭제 기능 통일</td><td>프론트 <code>ConversationList</code>, 서버 API</td></tr>
+  <tr><td><span class="tag t-info">P2</span></td><td>로그인 보안 보강</td><td>실패 횟수 제한, 토큰 만료 단축·갱신, 저장 방식 검토</td><td>Spring, 프론트 <code>auth.ts</code></td></tr>
+  <tr><td><span class="tag t-info">P2</span></td><td>운영 경로 설계</td><td>Vite 프록시 대신 Nginx 등으로 경로 분기, CORS 허용 주소 설정화, 배포 포트·방화벽</td><td>인프라</td></tr>
+</table>
+
+<h3>권장 작업 순서</h3>
+<ol>
+  <li>이 보고서를 찬울님과 함께 검토하고 <b>P0 세 가지를 찬울님 브랜치에서 먼저 수정</b>(찬울님이 코드를 가장 잘 알고, 비밀값 교체는 DB 소유자가 해야 함).</li>
+  <li>수정된 브랜치를 새 통합 브랜치(<code>feature/integrate-chanul</code>)에서 main과 병합하고 <code>ChatPage.tsx</code> 충돌 해결.</li>
+  <li>P1(오류 전달·시간 제한, Spring 경유 전환, 테스트)을 진행한 뒤 <b>세 서버(Vite·Spring·FastAPI)와 Oracle을 함께 띄워</b> 가입 → 로그인 → 검색 → 기록 저장 → 재접속 흐름을 확인.</li>
+  <li>P2는 운영 전환 전에 순차적으로.</li>
+</ol>
+
+<!-- ================= 7 ================= -->
+<h2>7. 비밀값 노출 관련 조치</h2>
+<div class="box warn">
+  <ul>
+    <li><b>이미 노출된 값</b>: ① <code>ChanUl3rd</code> 브랜치의 <code>application.yml</code>(DB 비밀번호, JWT 서명 키, AES 마스터 키) ② 이번 점검 중 채팅에 붙여 넣은 DB 접속 정보. 모두 <b>교체 대상</b>으로 보세요.</li>
+    <li><b>저장소 이력 정리</b>: 비공개 저장소여도 한 번 올라간 값은 이력에 남습니다. 값을 교체하면 과거 값은 무효가 되므로, 이력 삭제(강제 push 필요)까지 할지는 팀이 정하면 됩니다.</li>
+    <li><b>교체 순서</b>: 새 값 생성 → 환경변수 적용 → Spring 재시작 → 기존 저장 키 2건 재암호화(또는 사용자에게 재등록 안내) → 옛 값 폐기.</li>
+    <li>앞으로는 <code>.env</code>/환경변수에만 두고 <code>.env.example</code>에는 항목 이름만 적습니다(Python 쪽은 이미 그렇게 하고 있음).</li>
+  </ul>
+</div>
+
+<!-- ================= 8 ================= -->
+<h2>8. 결정이 필요한 것</h2>
+<ol>
+  <li><b>D-1. 사용자 키를 서버에 저장할 것인가</b> — 저장하면 편리하지만 DB 유출 시 사용자 키가 위험해지고 마스터 키 관리가 필요합니다. 저장하지 않으면 지금처럼 브라우저에만 보관(요청 때마다 헤더 전달)합니다. 서버 기본 AI(Qwen)가 있으면 키 없이도 사용 가능합니다.</li>
+  <li><b>D-2. 상담 기록의 기준</b> — 로그인 사용자는 Oracle 기록만 보일지, 브라우저 기록과 함께 보일지, 게스트 기록을 계정으로 가져올지.</li>
+  <li><b>D-3. 서버 구성</b> — Spring(8080)과 FastAPI(8000)를 모두 띄우는 구조를 운영에서도 유지할지, Python 쪽에 로그인·기록을 합칠지. 이미 Java 코드가 있어 유지가 현실적이지만 두 서버 운영 부담이 생깁니다.</li>
+  <li><b>D-4. 공용 DB 위치</b> — 지금은 팀원 개인 PC입니다. PC가 꺼지면 모든 팀원의 로그인·기록이 멈추므로, 별도 서버로 옮길 시점을 정해야 합니다.</li>
+</ol>
+
+<!-- ================= 9 ================= -->
+<h2>9. 점검 방법과 한계</h2>
+<table>
+  <tr><th style="width:26%">항목</th><th>내용</th></tr>
+  <tr><td>수행</td><td>브랜치 소스 전체 읽기(Java 컨트롤러·서비스·보안·매퍼, 프론트 변경, 문서), Oracle 읽기 전용 점검(접속, 20회 반복 접속, 테이블·제약·인덱스·시퀀스·건수), main과의 시험 병합 계산</td></tr>
+  <tr><td>수행하지 않음</td><td>① Spring 빌드·기동(Gradle 미설치, wrapper 없음) ② DB 쓰기 시험(가입·메시지 저장) ③ 세 서버를 함께 띄운 종단 시험 ④ 브라우저 화면 시험</td></tr>
+  <tr><td>판단 근거의 성격</td><td>B-1(대소문자)과 C-1(AI 요청 경로)은 <b>코드와 DB 제약 조회로 확인한 사실</b>이고, 실제 실행 시 오류 메시지(예: ORA-02290)는 기동 시험에서 확정하는 것이 좋습니다. C-2(오류 코드 유실)는 코드 흐름상 확실하며 시험으로 재확인 권장</td></tr>
+  <tr><td>보안 처리</td><td>접속 정보는 파일·로그·이 문서에 남기지 않았고 점검 중 프로세스 환경변수로만 사용했습니다.</td></tr>
+</table>
+
+<p class="small">작성: Claude Code · 근거 파일: <code>app/memberJoin/**</code>, <code>frontend/src/api/{auth,history}.ts</code>, <code>frontend/src/features/chat/ChatPage.tsx</code>, <code>frontend/vite.config.ts</code>, <code>docs/oracle_schema.sql</code>, <code>docs/AUTH_AND_HISTORY_PLAN.md</code></p>
+
+</div>
+</body>
+</html>
