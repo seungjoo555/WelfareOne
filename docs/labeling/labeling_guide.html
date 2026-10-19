@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>WelfareOne 사람 라벨링 가이드</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Malgun Gothic", "맑은 고딕", sans-serif; font-size: 10.5pt; line-height: 1.6; color: #1f2933; margin: 0; }
+  h1 { font-size: 21pt; margin: 0 0 4px; color: #0b3d91; }
+  .sub { color: #52606d; margin-bottom: 14px; }
+  h2 { font-size: 13.5pt; color: #0b3d91; border-bottom: 2px solid #0b3d91; padding-bottom: 3px; margin: 22px 0 8px; break-after: avoid; }
+  h3 { font-size: 11pt; margin: 14px 0 4px; break-after: avoid; }
+  p { margin: 5px 0; }
+  ul, ol { margin: 4px 0 4px 0; padding-left: 20px; }
+  li { margin: 2px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 9.8pt; break-inside: avoid; }
+  th, td { border: 1px solid #cbd2d9; padding: 5px 8px; vertical-align: top; text-align: left; }
+  th { background: #e8eefb; }
+  .box { border-left: 4px solid #0b3d91; background: #f1f5fd; padding: 7px 12px; margin: 10px 0; break-inside: avoid; }
+  .warn { border-left-color: #c92a2a; background: #fff1f1; }
+  .ok { color: #1b7a3a; font-weight: bold; }
+  .no { color: #c92a2a; font-weight: bold; }
+  .big { font-size: 12.5pt; font-weight: bold; }
+  code { font-family: Consolas, monospace; background: #eef1f4; padding: 1px 4px; border-radius: 3px; font-size: 9.5pt; }
+  .pb { break-before: page; }
+  .cols { display: flex; gap: 12px; } .cols > div { flex: 1; }
+</style>
+</head>
+<body>
+
+<h1>사람 라벨링 가이드</h1>
+<div class="sub">WelfareOne 청년 복지정책 추천 — 검색 정확도 평가용 정답 만들기 &nbsp;|&nbsp; 2026-10-07 &nbsp;|&nbsp; 작업자 3명 + 프로젝트 담당 지민</div>
+
+<h2>1. 이게 무슨 작업인가요?</h2>
+<p>사용자가 "배고파", "월세가 부담돼요"처럼 말했을 때 시스템이 보여 주는 정책이 <b>정말 도움이 되는지</b>를 사람이 직접 판정하는 작업입니다. 지금까지는 AI(Gemini)가 매긴 점수로만 정확도를 확인했는데, AI끼리 채점하면 실제보다 좋게 나옵니다(AI 두 개의 판정 일치율 81%). 사람이 만든 정답이 있어야 "좋아졌다"를 믿을 수 있습니다.</p>
+
+<table>
+  <tr><th style="width:26%">얻는 것</th><th>설명</th></tr>
+  <tr><td>믿을 수 있는 정확도 숫자</td><td>처음으로 상황형·구어체 질문의 정밀도(보여 준 것 중 맞는 비율)와 재현율(맞는 것 중 보여 준 비율)을 잴 수 있습니다.</td></tr>
+  <tr><td>기준값 확정</td><td>지금 잠정값인 검색 거리 0.55/0.50, 후보 8개, 표시 3+3개를 사람 정답 기준으로 가장 좋은 값으로 정합니다.</td></tr>
+  <tr><td>이후 개선의 효과 확인</td><td>검색어 개선, 다중 질의 같은 후속 작업을 이 세트로 전후 비교합니다.</td></tr>
+  <tr><td>AI 판정의 약점 발견</td><td>특히 장애인·보훈·직장인처럼 <b>특정 집단 전용 정책</b>을 접을지 "대상 한정" 표시로 보여 줄지 결정하는 근거가 됩니다.</td></tr>
+  <tr><td>논문 평가 자료</td><td>기존 평가 280개는 "정책 이름 찾기"만 재므로, 상황형 평가가 새로 생깁니다.</td></tr>
+</table>
+
+<h2>2. 전체 흐름과 일정</h2>
+<table>
+  <tr><th style="width:5%">#</th><th style="width:38%">단계</th><th style="width:20%">담당</th><th>소요(예상)</th></tr>
+  <tr><td>1</td><td>질문 작성 (총 50개)</td><td>팀원 A·B·C</td><td>각 약 40분</td></tr>
+  <tr><td>2</td><td>질문 취합 → 후보 시트 생성(프로그램)</td><td>Claude</td><td>약 30분</td></tr>
+  <tr><td>3</td><td>후보 라벨링 (본인이 쓰지 않은 질문만)</td><td>팀원 A·B·C</td><td>각 약 2시간</td></tr>
+  <tr><td>4</td><td>일치도 계산, 의견이 갈린 행 확정</td><td>Claude + 지민</td><td>약 1시간</td></tr>
+  <tr><td>5</td><td>정확도 측정, 기준값 확정, 결과 문서화</td><td>Claude</td><td>당일</td></tr>
+</table>
+<p>마감: 질문 작성 <b>____월 ____일</b> / 라벨링 <b>____월 ____일</b> (지민이 기입)</p>
+
+<h2>3. 역할 분담</h2>
+<table>
+  <tr><th style="width:14%">사람</th><th style="width:22%">작성 분야</th><th>하는 일</th></tr>
+  <tr><td><b>팀원 A</b><br>(이름: ______)</td><td>주거·생계·금융<br>질문 17개</td><td>① 질문 17개 작성 &nbsp; ② <b>B가 쓴 질문</b>의 후보 라벨링</td></tr>
+  <tr><td><b>팀원 B</b><br>(이름: ______)</td><td>일자리·교육·교통<br>질문 17개</td><td>① 질문 17개 작성 &nbsp; ② <b>C가 쓴 질문</b>의 후보 라벨링</td></tr>
+  <tr><td><b>팀원 C</b><br>(이름: ______)</td><td>출산·육아·건강·정신건강·식생활·기타<br>질문 16개</td><td>① 질문 16개 작성 &nbsp; ② <b>A가 쓴 질문</b>의 후보 라벨링</td></tr>
+  <tr><td><b>지민</b></td><td>-</td><td>의견이 갈린 행의 <b>최종 판정</b>, 기준에 대한 질문 답변</td></tr>
+  <tr><td><b>Claude</b></td><td>-</td><td>양식·후보 시트 생성, 일치도 계산, 정확도 측정 (사람이 할 일 아님)</td></tr>
+</table>
+<div class="box">
+  <b>배정 규칙</b><br>
+  · <span class="no">자기가 쓴 질문은 직접 라벨링하지 않습니다.</span> 기대하는 답이 정해져 있으면 판정이 한쪽으로 쏠립니다.<br>
+  · 질문 3개 중 1개는 <b>나머지 한 사람도 추가로 라벨링</b>합니다(일치도 확인용, 전체의 약 1/3). 그래서 라벨링 분량은 1인당 질문 약 22개(행 약 250개) 정도입니다.<br>
+  · 시트는 프로그램이 사람별로 따로 만들어 드립니다. 본인 이름이 붙은 시트(<code>sheet_본인.csv</code>)만 작업하세요.
+</div>
+
+<h2 class="pb">4. 작업 1 — 질문 쓰기</h2>
+<p>양식 파일 <code>situational_questions_template.csv</code>를 복사해 <code>situational_questions_본인이름.csv</code>로 저장하고 채웁니다(엑셀로 열어 CSV UTF-8로 저장).</p>
+<table>
+  <tr><th style="width:18%">열</th><th>쓰는 법</th></tr>
+  <tr><td>id</td><td>A01, A02 … (작성자 알파벳 + 번호)</td></tr>
+  <tr><td>author</td><td>A, B, C 중 본인</td></tr>
+  <tr><td>region_level1 / level2</td><td>시·도 / 시·군·구. 예: 서울특별시 / 관악구, 세종은 level2 비움. 지역명은 복지로·정책 DB 표기와 같게 씁니다.</td></tr>
+  <tr><td>age</td><td>만 나이(숫자). 모르면 비워도 됩니다.</td></tr>
+  <tr><td>question</td><td>실제 사용자가 하는 말투 그대로</td></tr>
+  <tr><td>type</td><td>구어체 / 상황서술 / 키워드 / 무관질문 / 지역·나이민감</td></tr>
+  <tr><td>note</td><td>선택. 특이사항</td></tr>
+</table>
+
+<h3>전체 50개의 구성 (3명 합계)</h3>
+<table>
+  <tr><th style="width:22%">유형</th><th style="width:9%">개수</th><th>예</th></tr>
+  <tr><td>구어체·감정</td><td>15</td><td>"배고파", "춥다", "아기 낳고 몸이 너무 힘들어요"</td></tr>
+  <tr><td>상황 서술</td><td>20</td><td>"월세가 부담돼요", "취업 준비 중인데 구직활동 지원금 받을 수 있나요?"</td></tr>
+  <tr><td>짧은 키워드</td><td>8</td><td>"청년 창업 지원금", "전세 대출 이자"</td></tr>
+  <tr><td>정책과 무관한 질문</td><td>4</td><td>"오늘 날씨 어때", "피자 맛집" → 후보가 안 나오는 것이 정상</td></tr>
+  <tr><td>지역·나이 민감</td><td>3</td><td>특정 지역에만 있을 법한 지원, 나이 제한이 걸리는 지원</td></tr>
+</table>
+<p>각자 위 유형을 골고루 섞어 쓰세요. 무관한 질문은 A 1개, B 1개, C 2개 정도로 나눕니다.</p>
+
+<div class="cols">
+  <div class="box"><span class="ok">✔ 좋은 질문</span><ul>
+    <li>정책 이름을 모르는 사람처럼 쓴다</li>
+    <li>맞춤법이 틀리거나 말이 짧아도 된다</li>
+    <li>한 질문에 필요 1가지(많아도 3가지)</li>
+    <li>서울만 쓰지 않고 시·도를 최소 8곳 이상 섞는다</li>
+  </ul></div>
+  <div class="box warn"><span class="no">✘ 피할 것</span><ul>
+    <li>정책 DB나 복지로를 보면서 쓰기(쉬운 질문만 나옴)</li>
+    <li>같은 의도를 말만 바꿔 3개 이상 쓰기</li>
+    <li>실제 이름·연락처·주소 등 개인정보</li>
+    <li>"청년 복지 정책 알려줘"처럼 너무 막연한 질문</li>
+  </ul></div>
+</div>
+
+<h2 class="pb">5. 작업 2 — 후보 라벨링 (가장 중요)</h2>
+<p>받은 시트(<code>sheet_본인.csv</code>)를 엑셀로 열면 한 줄이 "질문 1개 + 정책 후보 1개"입니다. 아래 두 칸을 채웁니다.</p>
+
+<p class="big">판정 기준: "이 질문을 한 사람이 이 정책을 신청해 볼 가치가 있는가?"</p>
+
+<table>
+  <tr><th style="width:12%">점수</th><th style="width:34%">의미</th><th>예 (질문: "월세가 부담돼요")</th></tr>
+  <tr><td><b class="ok">2 관련</b></td><td>질문의 상황·필요에 직접 해당하고, 질문에서 알 수 있는 정보만으로도 대상이 될 수 있음</td><td>청년월세 지원사업</td></tr>
+  <tr><td><b>1 부분</b></td><td>주제는 맞지만 대상이 한정되어 질문만으로는 알 수 없거나, 간접적으로만 도움이 됨</td><td>신혼부부 전월세 대출이자 (신혼부부 한정)<br>장애인 주거 지원 (장애인 한정)</td></tr>
+  <tr><td><b class="no">0 무관</b></td><td>주제가 다르거나 단어만 비슷함</td><td>산후건강관리비용, 보훈위문금</td></tr>
+</table>
+
+<table>
+  <tr><th style="width:22%">대상한정(✔) 칸</th><th>특정 집단 전용 정책이면 ✔를 표시합니다(점수와 별개). 장애인, 보훈, 북한이탈주민, 출소자, 농어민, 특정 직업·기업 재직자 등. 이 칸이 "집단 전용 정책을 접을지, 표시를 붙여 보여 줄지" 정하는 근거가 됩니다.</th></tr>
+</table>
+
+<h3>판단이 헷갈리는 경우</h3>
+<table>
+  <tr><th style="width:36%">상황</th><th>이렇게 하세요</th></tr>
+  <tr><td>"배고파" → 직장인 점심 외식 할인 (중소기업 재직자 한정)</td><td>점수 <b>1</b> + 대상한정 ✔</td></tr>
+  <tr><td>"배고파" → 무료법률상담</td><td>점수 <b>0</b></td></tr>
+  <tr><td>"그 지역 정책이라서 관련 있다"는 생각이 들 때</td><td><b>지역은 보지 않습니다.</b> 지역 필터는 이미 적용되어 있으니 내용이 질문과 맞는지만 보세요.</td></tr>
+  <tr><td>요약이 잘려서 대상·내용을 모르겠을 때</td><td>"원문 링크"를 열어 확인합니다. 링크가 비어 있으면 복지로(bokjiro.go.kr)에서 정책명으로 검색합니다.</td></tr>
+  <tr><td>그래도 모르겠을 때</td><td><b>점수 1 + 메모</b>를 남깁니다. 추측으로 2를 주지 않습니다.</td></tr>
+  <tr><td>질문 하나에 후보가 하나도 없을 때</td><td>할 일 없음. 무관한 질문이라면 시스템이 맞게 동작한 것입니다.</td></tr>
+  <tr><td>무관한 질문(날씨 등)인데 후보가 나왔을 때</td><td>전부 <b>0</b></td></tr>
+  <tr><td>시트에 없지만 알고 있는 더 좋은 정책이 있을 때</td><td>메모 칸에 정책명을 적어 둡니다(재현율 확인에 쓰입니다).</td></tr>
+</table>
+
+<div class="box">
+  <b>작업 팁</b><br>
+  · 후보의 순서는 <b>일부러 섞여 있고</b> 시스템 점수·거리는 숨겨져 있습니다. 순서에 영향받지 말고 한 줄씩 독립적으로 판단하세요.<br>
+  · 점수는 숫자 0, 1, 2만 입력합니다. 빈칸이 있으면 제출이 안 됩니다.<br>
+  · 한 질문의 후보를 한 번에 연속해서 보세요(같은 질문 안에서 기준이 흔들리지 않습니다). 행당 15~30초가 적당합니다.
+</div>
+
+<h2>6. 일치도 확인과 불일치 정리</h2>
+<ul>
+  <li>두 사람이 겹쳐서 라벨링한 약 17개 질문(약 200행)으로 일치도(단순 일치율, Cohen's kappa)를 Claude가 계산합니다. 목표는 <b>kappa 0.6 이상</b>입니다. 미달이면 위 기준 문구를 고치고 그 구간만 다시 라벨링합니다.</li>
+  <li>두 사람의 점수가 다른 행은 <b>지민이 최종 판정</b>하고 사유를 메모에 한 줄 남깁니다. 같은 유형의 불일치가 반복되면 이 가이드의 "헷갈리는 경우"에 사례로 추가합니다.</li>
+  <li>측정은 두 방식으로 모두 합니다: ① 2점만 관련으로 인정, ② 1점과 2점을 관련으로 인정. 어느 쪽을 쓸지는 결과를 보고 정합니다.</li>
+</ul>
+
+<h2>7. 꼭 지켜 주세요</h2>
+<table>
+  <tr><th style="width:28%">항목</th><th>내용</th></tr>
+  <tr><td>작성자 ≠ 라벨러</td><td>본인이 쓴 질문의 시트는 받지 않습니다. 받았다면 건너뛰고 알려 주세요.</td></tr>
+  <tr><td>다른 사람과 의논 금지</td><td>라벨링이 끝나기 전에는 같은 행의 판정을 서로 묻거나 맞춰 보지 않습니다(일치도 측정이 무의미해집니다). 기준이 애매하면 지민에게만 질문하세요.</td></tr>
+  <tr><td>개인정보·키</td><td>질문에 실제 이름·연락처·주소를 쓰지 않습니다. API 키 등은 이 작업에 필요 없습니다.</td></tr>
+  <tr><td>파일</td><td>완료한 시트는 이름을 그대로 두고(<code>sheet_본인.csv</code>) 지민에게 전달합니다. 정답 키 파일(<code>labeling_key_PRIVATE.csv</code>)은 라벨러에게 공유하지 않으며 저장소에도 올리지 않습니다.</td></tr>
+  <tr><td>엑셀 저장</td><td>"CSV UTF-8(쉼표로 분리)"로 저장해야 한글이 깨지지 않습니다.</td></tr>
+</table>
+
+<h2>8. 제출 전 체크리스트</h2>
+<ul style="list-style:none; padding-left:4px;">
+  <li>☐ 질문: 50개 중 내 분량을 모두 썼고 지역·나이가 채워져 있다</li>
+  <li>☐ 질문: 정책 이름을 보고 쓴 질문이 없다, 개인정보가 없다</li>
+  <li>☐ 라벨링: 모든 행의 점수가 0/1/2 중 하나다</li>
+  <li>☐ 라벨링: 특정 집단 전용 정책에 ✔를 표시했다</li>
+  <li>☐ 라벨링: 확신이 없던 행에는 메모가 있다</li>
+  <li>☐ CSV UTF-8로 저장했다</li>
+</ul>
+
+<p style="color:#52606d; font-size:9pt; margin-top:16px;">문의: 지민. 이 가이드와 시트 생성 스크립트(<code>scripts/make_labeling_sheet.py</code>)는 저장소의 <code>docs/labeling/</code>, <code>scripts/</code>에 있습니다.</p>
+
+</body>
+</html>

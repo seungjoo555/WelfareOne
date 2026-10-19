@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "esbuild tests/history.test.ts --bundle --platform=node --format=esm --log-level=warning --outfile=.test-build/history.test.mjs && node --test .test-build/history.test.mjs"
+    "test": "esbuild tests/history.test.ts tests/relevance.test.ts tests/paging.test.ts tests/quickQuestions.test.ts --bundle --platform=node --format=esm --log-level=warning --outdir=.test-build --out-extension:.js=.mjs && node --test .test-build/history.test.mjs .test-build/relevance.test.mjs .test-build/paging.test.mjs .test-build/quickQuestions.test.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

@@ -1,4 +1,13 @@
-import { HISTORY_EMPTY, HISTORY_PRIVACY, HISTORY_SAVE_ERRORS } from "../../constants/text";
+import { useEffect, useRef, useState } from "react";
+import {
+  HISTORY_EMPTY,
+  HISTORY_PRIVACY,
+  HISTORY_RENAME_HINT,
+  HISTORY_RENAME_INPUT_LABEL,
+  HISTORY_SAVE_ERRORS,
+  historyRenameLabel,
+} from "../../constants/text";
+import { CUSTOM_TITLE_MAX_LENGTH } from "../../storage/history";
 import type { ConversationSummary } from "../../storage/history";
 import type { ConversationHistory } from "../../state/useConversationHistory";
 
@@ -37,8 +46,37 @@ interface Props {
 }
 
 export function ConversationList({ history, disabled, onSelected }: Props) {
-  const { items, activeId, saveError, select, remove, clearAll } = history;
+  const { items, activeId, saveError, select, rename, remove, clearAll } = history;
   const groups = groupByDate(items, Date.now());
+  // 제목 수정 중인 상담과 입력값. Enter/포커스 이탈 = 저장, Esc = 취소.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const finished = useRef(false); // Enter/Esc 직후 이어지는 blur로 두 번 저장되는 것을 막는다
+
+  useEffect(() => {
+    if (editingId) {
+      finished.current = false;
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editingId]);
+
+  const startEdit = (id: string, title: string) => {
+    setEditingId(id);
+    setDraft(title);
+  };
+  const commit = () => {
+    if (finished.current || editingId === null) return;
+    finished.current = true;
+    const target = items.find((item) => item.id === editingId);
+    if (target && draft.trim() !== target.title) rename(editingId, draft);
+    setEditingId(null);
+  };
+  const cancel = () => {
+    finished.current = true;
+    setEditingId(null);
+  };
 
   return (
     <nav className="history" aria-label="상담 기록">
@@ -49,6 +87,32 @@ export function ConversationList({ history, disabled, onSelected }: Props) {
           <ul className="history-list">
             {group.items.map((item) => {
               const active = item.id === activeId;
+              if (item.id === editingId) {
+                return (
+                  <li key={item.id} className={`history-item editing${active ? " active" : ""}`}>
+                    <input
+                      ref={inputRef}
+                      className="history-rename-input"
+                      value={draft}
+                      maxLength={CUSTOM_TITLE_MAX_LENGTH}
+                      aria-label={HISTORY_RENAME_INPUT_LABEL}
+                      placeholder={HISTORY_RENAME_HINT}
+                      onChange={(event) => setDraft(event.target.value)}
+                      onBlur={commit}
+                      onKeyDown={(event) => {
+                        if (event.nativeEvent.isComposing) return; // 한글 조합 중 Enter는 글자 확정이므로 저장하지 않는다
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          commit();
+                        } else if (event.key === "Escape") {
+                          event.preventDefault();
+                          cancel();
+                        }
+                      }}
+                    />
+                  </li>
+                );
+              }
               return (
                 <li key={item.id} className={`history-item${active ? " active" : ""}`}>
                   <button
@@ -67,6 +131,15 @@ export function ConversationList({ history, disabled, onSelected }: Props) {
                       {item.region_text}
                       {item.age === null ? "" : ` · ${item.age}세`}
                     </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="history-edit"
+                    aria-label={historyRenameLabel(item.title)}
+                    title="제목 수정"
+                    onClick={() => startEdit(item.id, item.title)}
+                  >
+                    ✎
                   </button>
                   <button
                     type="button"

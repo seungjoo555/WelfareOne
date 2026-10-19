@@ -1,6 +1,53 @@
 import unittest
 
-from app.question_analyzer import QuestionAnalyzer, _GeminiAnalysis
+from fake_llm import FakeLLM
+
+from app.question_analyzer import (
+    ANALYZER_SEED,
+    SYSTEM_INSTRUCTION,
+    QuestionAnalyzer,
+    _GeminiAnalysis,
+)
+
+
+def _fake_client():
+    return FakeLLM(
+        [
+            _GeminiAnalysis(
+                route="situation_search",
+                search_query="무료 급식 식사 지원",
+                intent="policy_search",
+                intents=["policy_search"],
+                confidence=0.9,
+            )
+        ]
+    )
+
+
+class QuestionAnalyzerRequestTest(unittest.TestCase):
+    """Gemini 요청 설정(seed)과 검색어 지침. 실제 API는 호출하지 않는다."""
+
+    def make(self, **kwargs):
+        analyzer = QuestionAnalyzer(api_key="x" * 24, **kwargs)
+        analyzer.client = _fake_client()
+        return analyzer
+
+    def test_seed_is_fixed_by_default_to_keep_results_stable(self):
+        analyzer = self.make()
+        analyzer.analyze_question("배고파")
+        call = analyzer.client.calls[0]
+        self.assertEqual(call["seed"], ANALYZER_SEED)
+        self.assertEqual(call["system"], SYSTEM_INSTRUCTION)
+
+    def test_seed_can_be_disabled(self):
+        analyzer = self.make(seed=None)
+        analyzer.analyze_question("배고파")
+        self.assertIsNone(analyzer.client.calls[0]["seed"])
+
+    def test_instruction_tells_model_to_translate_colloquial_needs(self):
+        # 구어체 질문("배고파")이 그대로 검색어가 되어 결과가 비는 문제를 막는 지침이 빠지지 않았는지 확인한다.
+        for phrase in ("구어체", "배고파", "무료 급식 식사 지원", "점심 추천", "청년 복지 정책"):
+            self.assertIn(phrase, SYSTEM_INSTRUCTION)
 
 
 class QuestionAnalyzerMappingTest(unittest.TestCase):
@@ -20,6 +67,27 @@ class QuestionAnalyzerMappingTest(unittest.TestCase):
 
         self.assertEqual(result.requested_sections, ["documents", "application"])
         self.assertEqual(result.include_keywords, ["월세", "임대차계약서"])
+
+    def test_specific_policy_without_a_policy_name_becomes_situation_search(self):
+        parsed = _GeminiAnalysis(
+            route="specific_policy", policy_name=None, search_query="자격증 취득 지원",
+            intent="policy_search", intents=["policy_search"], confidence=0.8,
+        )
+        self.assertEqual(QuestionAnalyzer._to_result(parsed, current_policy_id=None).route, "situation_search")
+        blank = parsed.model_copy(update={"policy_name": "  "})
+        self.assertEqual(QuestionAnalyzer._to_result(blank, current_policy_id=None).route, "situation_search")
+        named = parsed.model_copy(update={"policy_name": "청년 월세 지원"})
+        self.assertEqual(QuestionAnalyzer._to_result(named, current_policy_id=None).route, "specific_policy")
+
+    def test_request_words_are_not_kept_as_keywords(self):
+        parsed = _GeminiAnalysis(
+            route="situation_search", policy_name=None, search_query="자격증 취득 지원",
+            intent="policy_search", intents=["policy_search"], confidence=0.8,
+            include_keywords=["자격증", "추천"], exclude_keywords=["알려줘", "정책", "대출"],
+        )
+        result = QuestionAnalyzer._to_result(parsed, current_policy_id=None)
+        self.assertEqual(result.include_keywords, ["자격증"])
+        self.assertEqual(result.exclude_keywords, ["대출"])
 
     def test_followup_without_selected_policy_is_corrected(self):
         parsed = _GeminiAnalysis(

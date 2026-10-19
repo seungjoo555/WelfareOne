@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import os
-import time
-from pathlib import Path
 from typing import Literal
 
-from google import genai
-from google.genai import errors, types
 from pydantic import BaseModel, Field, field_validator
 
 from .config import GEMINI_MODEL, PROJECT_DIR
+from .env import load_env_file
+from .gemini_retry import call_with_retry
+from .llm_client import GeminiClient, LLMClient
 from .models import QuestionAnalysis
 
 
@@ -79,6 +78,9 @@ class _GeminiAnalysis(BaseModel):
         return value
 
 
+# 같은 질문이 실행마다 다른 검색어로 분석되는 것을 줄이기 위해 고정한다(temperature=0만으로는 흔들렸다).
+ANALYZER_SEED = 0
+
 SYSTEM_INSTRUCTION = """
 당신은 대한민국 청년 복지정책 검색 시스템의 질문 분석기입니다.
 사용자의 질문을 답하지 말고 검색과 대화 분기에 필요한 구조만 반환하세요.
@@ -110,6 +112,12 @@ SYSTEM_INSTRUCTION = """
 - 특정 정책명이 있으면 정확히 보존
 - 사용자가 말하지 않은 지역, 나이, 소득, 직업, 혼인 상태를 만들지 않음
 - '서울'을 '서울특별시'처럼 바꾸는 지역 정규화는 여기서 하지 않음
+- 구어체·감정·상태 표현만 있는 질문(예: '배고파', '춥다', '막막해')은, 그 상황에서 필요한 지원 분야를 정책 용어로 풀어 쓴다. 예: '배고파' → '무료 급식 식사 지원', '집이 없어요' → '주거 지원 임시 거처'
+- 질문의 핵심 상황(예: '배고파')을 버리고 일부 단어(예: '점심 추천')만 남기지 않는다
+- '청년 복지 정책'처럼 질문과 무관한 일반 검색어로 대체하지 않는다
+- 정책과 무관하거나 의미를 알 수 없는 입력(예: 'zzzz', '안녕', '오늘 날씨')은 지원 분야를 지어내지 말고 입력 문구를 그대로 검색 문장으로 쓴다
+- 붙여 쓴 말은 띄어 읽는다(예: '자격증관련' → '자격증 관련'). 띄어쓰기나 어미가 달라도 같은 의도면 같은 검색 문장을 만든다
+- '알려줘', '추천해줘', '정책', '관련' 같은 요청·군더더기 표현은 검색 문장에 넣지 말고, 원하는 지원을 정책 문구 형태('○○ 취득 지원', '○○ 비용 지원')로 쓴다. 예: '자격증관련 정책 알려줘' → '자격증 취득 지원'
 - 부정 표현은 제거하지 말고 exclude_keywords에도 핵심 제외 개념을 기록
 
 [기타 규칙]
@@ -120,26 +128,15 @@ SYSTEM_INSTRUCTION = """
 """.strip()
 
 
-def _load_env_file(path: Path) -> None:
-    """추가 패키지 없이 프로젝트의 .env 값을 환경변수에 읽는다."""
-    if not path.exists():
-        return
-    for raw_line in path.read_text(encoding="utf-8-sig").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip().strip('"').strip("'")
-        if key:
-            os.environ.setdefault(key, value)
+# 요청·군더더기 표현은 검색 키워드가 아니다. 모델이 지침을 어기고 넣어도 코드에서 걸러 점수 보정에 쓰이지 않게 한다.
+_REQUEST_WORDS = {"알려줘", "알려주세요", "추천", "추천해줘", "추천해주세요", "정책", "관련", "문의"}
 
 
 def _clean_words(values: list[str]) -> list[str]:
     result: list[str] = []
     for value in values:
         word = value.strip()
-        if word and word not in result:
+        if word and word not in result and word not in _REQUEST_WORDS:
             result.append(word)
     return result[:8]
 
@@ -152,15 +149,20 @@ class QuestionAnalyzer:
         api_key: str | None = None,
         model: str = GEMINI_MODEL,
         max_retries: int = 3,
+        seed: int | None = ANALYZER_SEED,
+        client: LLMClient | None = None,
     ) -> None:
-        _load_env_file(PROJECT_DIR / ".env")
-        resolved_key = api_key or os.getenv("GEMINI_API_KEY")
-        if not resolved_key:
-            raise QuestionAnalysisError(
-                "GEMINI_API_KEY가 없습니다. 프로젝트의 .env 파일에 "
-                "GEMINI_API_KEY=발급받은키 형식으로 입력해주세요."
-            )
-        self.client = genai.Client(api_key=resolved_key)
+        self.seed = seed
+        if client is None:
+            load_env_file(PROJECT_DIR / ".env")
+            resolved_key = api_key or os.getenv("GEMINI_API_KEY")
+            if not resolved_key:
+                raise QuestionAnalysisError(
+                    "GEMINI_API_KEY가 없습니다. 프로젝트의 .env 파일에 "
+                    "GEMINI_API_KEY=발급받은키 형식으로 입력해주세요."
+                )
+            client = GeminiClient(resolved_key, model)
+        self.client = client
         self.model = model
         self.max_retries = max(1, max_retries)
 
@@ -180,42 +182,22 @@ class QuestionAnalyzer:
             f"사용자 질문: {question}"
         )
 
-        last_error: Exception | None = None
-        for attempt in range(self.max_retries):
-            try:
-                response = self.client.models.generate_content(
-                    model=self.model,
-                    contents=context,
-                    config=types.GenerateContentConfig(
-                        system_instruction=SYSTEM_INSTRUCTION,
-                        temperature=0,
-                        response_mime_type="application/json",
-                        response_schema=_GeminiAnalysis,
-                        automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                            disable=True,
-                        ),
-                    ),
-                )
-                parsed = response.parsed
-                if parsed is None:
-                    parsed = _GeminiAnalysis.model_validate_json(response.text)
-                elif not isinstance(parsed, _GeminiAnalysis):
-                    parsed = _GeminiAnalysis.model_validate(parsed)
-                return self._to_result(parsed, current_policy_id, question)
-            except errors.APIError as exc:
-                last_error = exc
-                status = getattr(exc, "code", None)
-                retryable = status in {429, 500, 502, 503, 504}
-                if not retryable or attempt == self.max_retries - 1:
-                    break
-                time.sleep(2 ** attempt)
-            except Exception as exc:
-                last_error = exc
-                break
+        def call() -> _GeminiAnalysis:
+            return self.client.generate_json(
+                system=SYSTEM_INSTRUCTION,
+                prompt=context,
+                schema=_GeminiAnalysis,
+                model=self.model,
+                seed=self.seed,
+            )
 
-        raise QuestionAnalysisError(
-            f"Gemini 질문 분석에 실패했습니다: {last_error}"
-        ) from last_error
+        try:
+            parsed = call_with_retry(call, self.max_retries)
+            return self._to_result(parsed, current_policy_id, question)
+        except Exception as exc:
+            raise QuestionAnalysisError(
+                f"Gemini 질문 분석에 실패했습니다: {exc}"
+            ) from exc
 
     @staticmethod
     def _to_result(
@@ -227,6 +209,9 @@ class QuestionAnalyzer:
         # 현재 정책이 없는데 후속 질문으로 잘못 분류한 결과는 코드에서 보정한다.
         if route == "current_policy_question" and not current_policy_id:
             route = "specific_policy" if parsed.policy_name else "situation_search"
+        # 정책명이 없는데 정책명을 말했다고 분류한 결과도 보정한다(공급자와 무관하게 같은 규칙, 계약서 8장 규칙 5).
+        if route == "specific_policy" and not (parsed.policy_name and parsed.policy_name.strip()):
+            route = "situation_search"
 
         intents = _normalize_intents(parsed.intent, parsed.intents, question)
         intent = intents[0]
@@ -274,6 +259,10 @@ def _sections_for_intents(intents: list[str]) -> list[str]:
             if section not in sections:
                 sections.append(section)
     return sections
+
+
+# 질문 분석 없이 의도(intent)만 알 때(예: 화면의 자주 묻는 질문 버튼) 필요한 섹션을 구한다.
+sections_for_intents = _sections_for_intents
 
 
 _default_analyzer: QuestionAnalyzer | None = None

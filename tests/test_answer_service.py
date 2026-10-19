@@ -1,8 +1,11 @@
 import unittest
 
 from app.answer_service import (
+    INTENT_ANSWER_GUIDE,
     AnswerService,
     _GeminiAnswer,
+    _build_contents,
+    answer_guide,
     extract_resources,
     select_contexts,
 )
@@ -118,6 +121,76 @@ class AnswerServiceTest(unittest.TestCase):
         self.assertEqual(result.used_sections, ["application"])
         self.assertEqual(len(result.resources), 1)
         self.assertEqual(result.resources[0].label, "신청서.hwp")
+
+class AnswerGuideTest(unittest.TestCase):
+    contexts = [PolicySection(section="target_criteria", chunk_index=0, document="만 19~39세 청년")]
+
+    def test_every_button_intent_has_a_guide(self):
+        for intent in ("eligibility", "benefit", "application", "administrative", "required_documents", "contact"):
+            self.assertIn(intent, INTENT_ANSWER_GUIDE)
+            self.assertIn("[답변 구성]", answer_guide([intent]))
+
+    def test_guide_lists_items_in_order(self):
+        guide = answer_guide(["eligibility"])
+        self.assertLess(guide.index("누가 대상인가"), guide.index("제외 대상"))
+        self.assertLess(guide.index("제외 대상"), guide.index("신청 전에 확인할 점"))
+
+    def test_multiple_intents_include_each_guide(self):
+        guide = answer_guide(["eligibility", "application"])
+        self.assertIn("지원 대상", guide)
+        self.assertIn("신청 방법", guide)
+
+    def test_unknown_or_missing_intents_add_nothing(self):
+        self.assertEqual(answer_guide(None), "")
+        self.assertEqual(answer_guide([]), "")
+        self.assertEqual(answer_guide(["policy_search"]), "")
+
+    def test_prompt_contains_guide_only_when_intents_are_given(self):
+        base = _build_contents("대상이 어떻게 되나요?", "local:X", "예시 정책", self.contexts)
+        self.assertNotIn("[답변 구성]", base)
+        guided = _build_contents("대상이 어떻게 되나요?", "local:X", "예시 정책", self.contexts, ["eligibility"])
+        self.assertIn("[답변 구성]", guided)
+        # 원문 블록과 질문은 그대로 유지된다
+        self.assertIn("공식 정책 원문:", guided)
+        self.assertIn("사용자 질문: 대상이 어떻게 되나요?", guided)
+        self.assertEqual(guided.replace(answer_guide(["eligibility"]) + "\n\n", ""), base)
+
+
+class ResourceExtractionTest(unittest.TestCase):
+    def _urls(self, text, section="contact_source"):
+        found = extract_resources([PolicySection(section=section, chunk_index=0, document=text)])
+        return [item.url for item in found]
+
+    def test_scheme_less_addresses_get_https(self):
+        self.assertEqual(
+            self._urls("누리집: www.bokjiro.go.kr 또는 youth.seoul.go.kr/main."),
+            ["https://www.bokjiro.go.kr", "https://youth.seoul.go.kr/main"],
+        )
+
+    def test_email_domains_are_not_links(self):
+        self.assertEqual(self._urls("문의 help@example.com"), [])
+
+    def test_http_urls_keep_working(self):
+        self.assertEqual(self._urls("https://www.gov.kr/portal."), ["https://www.gov.kr/portal"])
+
+    def test_negative_answer_is_corrected_when_link_exists(self):
+        parsed = _GeminiAnswer(
+            answer="사이트 정보가 확인되지 않습니다.", used_sections=["contact_source"],
+            evidence=["www.bokjiro.go.kr"], grounded=False,
+        )
+        contexts = [PolicySection(section="contact_source", chunk_index=0, document="www.bokjiro.go.kr")]
+        result = AnswerService._to_result(parsed, "local:X", contexts, question="신청 사이트 알려줘")
+        self.assertTrue(result.grounded)
+        self.assertIn("바로가기", result.answer)
+
+    def test_negative_answer_is_kept_for_non_link_questions(self):
+        parsed = _GeminiAnswer(
+            answer="금액은 확인되지 않습니다.", used_sections=["contact_source"],
+            evidence=["www.bokjiro.go.kr"], grounded=True,
+        )
+        contexts = [PolicySection(section="contact_source", chunk_index=0, document="www.bokjiro.go.kr")]
+        result = AnswerService._to_result(parsed, "local:X", contexts, question="금액이 얼마야?")
+        self.assertEqual(result.answer, "금액은 확인되지 않습니다.")
 
 
 if __name__ == "__main__":

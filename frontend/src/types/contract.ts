@@ -34,6 +34,13 @@ export interface RegionSelection {
 // GET /regions 응답: { "서울특별시": ["관악구", ...], ... }
 export type Regions = Record<string, string[]>;
 
+// GET /config: 서버가 키 없이도 AI 요청을 처리하는지(계약서 제안 8-3). 호출에 실패하면 "키 필수"로 본다.
+export interface ServerConfig {
+  server_llm: boolean;
+  server_llm_provider: string | null;
+  user_key_provider: string;
+}
+
 export interface PolicyCandidate {
   policy_id: string; // 예: "local:WLF00006618"
   title: string;
@@ -62,6 +69,10 @@ export interface SearchResponse {
   analysis: SearchAnalysis;
   local_policies: PolicyCandidate[];
   national_policies: PolicyCandidate[];
+  // [초안] LLM 관련도 재판정 결과. relevance_checked가 true면 low_relevance_ids에 든 후보만 "관련도 낮음"으로 접고,
+  // false(재판정을 안 했거나 실패)면 거리(distance)로 접는다. 옛 서버·저장된 기록에는 없을 수 있다.
+  relevance_checked?: boolean;
+  low_relevance_ids?: string[];
 }
 
 // [초안] GET /policies/{policy_id}  (없으면 404 POLICY_NOT_FOUND)
@@ -91,9 +102,12 @@ export interface AnswerResult {
 
 // [초안] POST /policies/{policy_id}/ask
 // route가 current_policy_question이 아니면 answer는 null (CLI의 "현재 정책 질문 아님" 분기).
+// 화면의 "자주 묻는 질문" 버튼이 보내는 질문 유형(계약서 8장 intent의 일부). 있으면 서버가 질문 분석을 건너뛴다.
+export type AskIntent = "eligibility" | "benefit" | "application" | "administrative" | "required_documents" | "contact";
 export interface AskRequest {
   question: string;
   policy_title: string | null;
+  intent?: AskIntent;
 }
 export interface AskResponse {
   route: Route;

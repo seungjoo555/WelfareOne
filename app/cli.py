@@ -4,6 +4,7 @@ from .answer_service import AnswerGenerationError, AnswerService
 from .models import RegionSelection
 from .question_analyzer import QuestionAnalysisError, QuestionAnalyzer
 from .repository import PolicyRepository
+from .search_pipeline import run_search
 from .search_service import PolicySearchService
 
 
@@ -183,11 +184,7 @@ def run() -> None:
             f"질문 분석: {analysis.route} / {', '.join(analysis.intents)}"
             f" / 검색어: {analysis.search_query}"
         )
-        result = search_service.search_policies(
-            analysis.search_query,
-            region,
-            age=age,
-        )
+        result = run_search(analysis, search_service, region, age, question)  # 터미널은 LLM 재판정 없이 거리 기반
         local_candidates = result.local_policies
         national_candidates = result.national_policies
         candidates = local_candidates + national_candidates

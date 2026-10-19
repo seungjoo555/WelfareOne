@@ -15,6 +15,19 @@ MAX_DISTANCE = 0.60
 TITLE_EXEMPT_BONUS = 0.5
 
 
+# 질문 분석기가 만든 include/exclude 키워드로 점수를 조금 조정한다(걸러내지는 않는다).
+# 평가 질문 75개 실측: 불일치 후보를 제거하면 정답 7%를 잃지만, 아래 가산점은 정답 손실 없이
+# top3 진입 69→71, 1위 60→63으로 나아졌다. 값을 키우면 이득이 늘지 않고(0.20/0.10에서 70/63) 위험만 커진다.
+KEYWORD_TITLE_WEIGHT = 0.10
+KEYWORD_BODY_WEIGHT = 0.05
+KEYWORD_MAX_MATCHES = 3  # 키워드가 많아도 가산·감점은 3개까지만 센다
+# 분석기가 자주 내놓지만 정책을 구분하지 못하는 일반어. 구분력이 없어 점수에 쓰지 않는다.
+GENERIC_KEYWORDS = frozenset({
+    "지원", "사업", "정책", "서비스", "관련", "청년", "및", "비용", "부담", "지원금",
+    "제도", "혜택", "신청", "대상", "조건", "방법", "가능", "받을", "수급", "신청방법",
+})
+
+
 def _where(*conditions: dict) -> dict:
     valid = [condition for condition in conditions if condition]
     return valid[0] if len(valid) == 1 else {"$and": valid}
@@ -28,6 +41,27 @@ def _title_bonus(title: str, question: str) -> tuple[float, list[str]]:
     ]
     matched = [word for word in words if word in question]
     return (0.5 * len(matched) / len(words) if words else 0.0), matched
+
+
+def _keyword_terms(keywords: list[str] | None) -> list[str]:
+    """키워드 구("복지 지원 사업")는 단어로 쪼개고, 짧거나 일반적인 단어와 중복은 뺀다."""
+    terms: list[str] = []
+    for keyword in keywords or []:
+        for word in keyword.split():
+            if len(word) >= 2 and word not in GENERIC_KEYWORDS and word not in terms:
+                terms.append(word)
+    return terms
+
+
+def _keyword_bonus(title: str, summary: str, terms: list[str]) -> tuple[float, list[str]]:
+    """제목에 있으면 KEYWORD_TITLE_WEIGHT, 본문(요약)에만 있으면 KEYWORD_BODY_WEIGHT를 단어당 더한다."""
+    in_title = [term for term in terms if term in title]
+    in_body = [term for term in terms if term in summary and term not in title]
+    bonus = (
+        KEYWORD_TITLE_WEIGHT * min(len(in_title), KEYWORD_MAX_MATCHES)
+        + KEYWORD_BODY_WEIGHT * min(len(in_body), KEYWORD_MAX_MATCHES)
+    )
+    return bonus, in_title + in_body
 
 
 def _age_matches(metadata: dict, age: int | None) -> bool:
@@ -99,8 +133,18 @@ class PolicySearchService:
         national_top_k: int = 3,
         per_scope: int = 30,
         max_distance: float | None = MAX_DISTANCE,
+        include_keywords: list[str] | None = None,
+        exclude_keywords: list[str] | None = None,
+        region_bonus_scale: float = 1.0,
     ) -> PolicySearchResult:
-        """max_distance보다 먼 후보는 제외한다. None이면 거리 제한 없이 개수를 채운다(튜닝·평가용)."""
+        """max_distance보다 먼 후보는 제외한다. None이면 거리 제한 없이 개수를 채운다(튜닝·평가용).
+
+        include_keywords가 정책명·요약에 있으면 점수를 올리고, exclude_keywords가 있으면 내린다(계약서 9장 규칙 8).
+        후보를 걸러내지는 않고 순서만 바꾼다.
+        region_bonus_scale은 시군구/광역 가산점에 곱하는 비율이다(기본 1.0, 0이면 거리 중심 정렬).
+        """
+        include_terms = _keyword_terms(include_keywords)
+        exclude_terms = _keyword_terms(exclude_keywords)
         vector = self.embedder.encode(
             question,
             prompt_name="query",
@@ -130,7 +174,15 @@ class PolicySearchService:
                     and bonus < TITLE_EXEMPT_BONUS
                 ):
                     continue
-                score = semantic_score + float(scope["bonus"]) + bonus
+                include_bonus, include_matched = _keyword_bonus(title, document, include_terms)
+                exclude_penalty, exclude_matched = _keyword_bonus(title, document, exclude_terms)
+                score = (
+                    semantic_score
+                    + float(scope["bonus"]) * region_bonus_scale
+                    + bonus
+                    + include_bonus
+                    - exclude_penalty
+                )
                 item = PolicyCandidate(
                     policy_id=policy_id,
                     title=title,
@@ -144,6 +196,8 @@ class PolicySearchService:
                         f"벡터 유사도 {semantic_score:.3f}",
                         f"검색 범위 {scope['name']}",
                         *(["정책명 단어 " + ", ".join(matched)] if matched else []),
+                        *(["포함 키워드 " + ", ".join(include_matched)] if include_matched else []),
+                        *(["제외 키워드 " + ", ".join(exclude_matched)] if exclude_matched else []),
                     ],
                 )
                 previous = candidates.get(policy_id)

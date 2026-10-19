@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>WelfareOne 동작 설명서</title>
+<style>
+  @page { size: A4; margin: 15mm 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Malgun Gothic", "맑은 고딕", sans-serif; font-size: 10pt; line-height: 1.55; color: #1f2933; margin: 0; }
+  h1 { font-size: 24pt; margin: 0 0 4px; color: #0b6b5f; }
+  h2 { font-size: 14pt; color: #0b6b5f; border-bottom: 2px solid #0b6b5f; padding-bottom: 3px; margin: 22px 0 8px; break-after: avoid; }
+  h3 { font-size: 11pt; margin: 14px 0 4px; color: #123; break-after: avoid; }
+  p { margin: 5px 0; }
+  ul, ol { margin: 4px 0; padding-left: 20px; }
+  li { margin: 2px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 9.2pt; break-inside: avoid; }
+  th, td { border: 1px solid #cbd2d9; padding: 4px 7px; vertical-align: top; text-align: left; }
+  th { background: #e3f3f0; }
+  code { font-family: Consolas, monospace; background: #eef1f4; padding: 0 3px; border-radius: 3px; font-size: 8.8pt; }
+  .sub { color: #52606d; margin-bottom: 10px; }
+  .pb { break-before: page; }
+  .box { border-left: 4px solid #0b6b5f; background: #effaf8; padding: 6px 12px; margin: 8px 0; break-inside: avoid; }
+  .warn { border-left-color: #c2410c; background: #fff7ed; }
+  .tag { display: inline-block; padding: 0 6px; border-radius: 8px; font-size: 8.2pt; color: #fff; margin-right: 2px; white-space: nowrap; }
+  .g { background: #c2410c; } .l { background: #1d4ed8; } .c { background: #4b5563; } .u { background: #0b6b5f; }
+  .steps { margin: 8px 0; }
+  .step { display: flex; gap: 8px; align-items: flex-start; border: 1px solid #cbd2d9; border-radius: 8px; padding: 5px 8px; margin: 0 0 12px; position: relative; break-inside: avoid; background: #fafcfc; }
+  .step:not(:last-child)::after { content: "▼"; position: absolute; left: 14px; bottom: -13px; font-size: 8pt; color: #0b6b5f; }
+  .step .n { flex: none; min-width: 22px; padding: 0 4px; width: auto; height: 22px; border-radius: 50%; background: #0b6b5f; color: #fff; text-align: center; font-weight: bold; line-height: 22px; font-size: 9pt; }
+  .step .t { flex: 1; }
+  .step b { color: #0b6b5f; }
+  .cover { text-align: center; padding-top: 70px; }
+  .cover h1 { font-size: 34pt; }
+  .cover .tagline { font-size: 14pt; color: #334; margin: 8px 0 30px; }
+  .toc { max-width: 430px; margin: 24px auto; text-align: left; font-size: 11pt; line-height: 1.9; }
+  svg text { font-family: "Malgun Gothic", sans-serif; }
+</style>
+</head>
+<body>
+
+<!-- 표지 -->
+<div class="cover">
+  <h1>WelfareOne</h1>
+  <div class="tagline">청년 복지정책 맞춤 추천·안내 AI — 동작 설명서</div>
+  <p class="sub">기준: <code>feature/jimin-search-ux</code> 브랜치 · 2026-10-08<br>프론트엔드·백엔드·AI 호출이 어떻게 맞물려 동작하는지 팀원용으로 정리했습니다.</p>
+  <div class="toc">
+    <b>목차</b><br>
+    1. 서비스가 하는 일<br>
+    2. 사용하는 기술(도구)<br>
+    3. 전체 구조와 폴더<br>
+    4. 사용자 화면 흐름<br>
+    5. API 목록과 호출 시점<br>
+    6. 질문 분석 (route·intent)<br>
+    7. 검색이 동작하는 순서<br>
+    8. AI 관련도 재판정과 후보 표시<br>
+    9. 후속 질문과 답변 (자주 묻는 질문 버튼)<br>
+    10. API 키(BYOK)·보안·오류 처리<br>
+    11. 브라우저에 저장되는 데이터<br>
+    12. 데이터(DB) 만드는 과정<br>
+    13. 실행·설정·테스트<br>
+    14. 비용·지연, 한계와 다음 작업<br>
+    부록. 용어 풀이
+  </div>
+</div>
+
+<h2 class="pb">1. 서비스가 하는 일</h2>
+<p>사용자가 <b>지역·나이</b>와 <b>자연어 질문</b>("월세가 부담돼요", "배고파")을 입력하면 정책 후보를 찾아 보여 주고, 사용자가 고른 정책의 <b>공식 원문에 근거해</b> 질문에 답하는 웹 서비스입니다. 자격 충족을 확정하지 않는 <b>예비 안내</b>이며 최종 확인은 해당 기관에서 합니다.</p>
+<div class="steps">
+  <div class="step"><div class="n">1</div><div class="t"><b>시작</b> — 시·도, 시·군·구, 나이(선택)를 입력합니다.</div></div>
+  <div class="step"><div class="n">2</div><div class="t"><b>질문</b> — 상황이나 정책 이름을 자유롭게 입력합니다(예시 질문 버튼도 있음).</div></div>
+  <div class="step"><div class="n">3</div><div class="t"><b>후보 확인</b> — "내 지역 정책"과 "중앙부처 정책"이 따로 나옵니다. 관련 있는 후보가 먼저, 관련도 낮은 후보는 배지와 함께 뒤에 이어지며 3개씩 이전/다음으로 넘겨 봅니다.</div></div>
+  <div class="step"><div class="n">4</div><div class="t"><b>정책 선택</b> — 카드를 누르면 "현재 정책"이 되고 자주 묻는 질문 버튼 6개가 나옵니다.</div></div>
+  <div class="step"><div class="n">5</div><div class="t"><b>후속 질문</b> — 버튼(지원 대상·지원 내용·신청 방법·신청 기간·필요 서류·문의처)을 누르거나 직접 입력합니다.</div></div>
+  <div class="step"><div class="n">6</div><div class="t"><b>답변</b> — 소제목·불릿으로 정리된 답변과 근거 구절, 첨부파일·누리집 링크가 나옵니다. "원문 보기", "다른 정책 찾기", "새 상담"으로 이어갑니다.</div></div>
+</div>
+
+<h2>2. 사용하는 기술(도구)</h2>
+<table>
+  <tr><th style="width:15%">영역</th><th style="width:30%">도구</th><th>역할</th></tr>
+  <tr><td>프론트엔드</td><td>React 18.3 + TypeScript 5.6, Vite 5.4, react-markdown 9</td><td>채팅 화면, 후보 카드, 답변 말풍선(마크다운). Vite 개발 서버가 <code>/api/*</code>를 백엔드로 중계(프록시)해 CORS 설정이 필요 없음</td></tr>
+  <tr><td>프론트 mock</td><td>MSW 2.6 (Mock Service Worker)</td><td>백엔드·키 없이 화면 개발. 질문에 <code>더보기</code>·<code>관련낮음</code>·<code>재판정</code> 같은 키워드를 넣어 상황 재현</td></tr>
+  <tr><td>백엔드</td><td>Python(3.11 이상, 개발 PC 3.14), FastAPI 0.141, uvicorn 0.52</td><td>REST API. 모델·DB는 서버 시작 때 한 번만 로드. Gemini 호출이 동기라 엔드포인트는 <code>def</code>로 두어 별도 스레드에서 실행</td></tr>
+  <tr><td>벡터 DB</td><td>ChromaDB 1.5.9 (<code>data/chroma</code>)</td><td>컬렉션 <code>welfare_policy_sections_qwen_v3</code>, 11,850 레코드(정책 1,418개 = 지자체 1,253 + 중앙 165), 코사인 거리. 저장소에는 올리지 않음</td></tr>
+  <tr><td>임베딩 모델</td><td>sentence-transformers 6.0.1 + torch 2.14, <code>Qwen/Qwen3-Embedding-0.6B</code></td><td>질문을 숫자 벡터로 바꿔 DB에서 비슷한 정책을 찾음. <b>서버 PC에서 로컬 실행</b>(CPU), 이미 내려받은 모델만 사용(<code>local_files_only</code>)</td></tr>
+  <tr><td>LLM</td><td>Gemini (google-genai 2.24), 기본 모델 <code>gemini-3.5-flash-lite</code></td><td>질문 분석, 관련도 판정, 원문 기반 답변 생성. 모델은 환경변수 <code>GEMINI_MODEL</code>로 변경</td></tr>
+  <tr><td>데이터</td><td>복지로 공공 API(XML) → JSONL → ChromaDB</td><td><code>scripts/</code>의 수집·변환·적재 스크립트(12절)</td></tr>
+  <tr><td>테스트</td><td>unittest(백엔드 131개), node:test + esbuild(프론트 39개)</td><td>실제 DB 스모크 테스트는 <code>WELFAREONE_REAL_TESTS=1</code>일 때만 실행</td></tr>
+</table>
+
+<h2 class="pb">3. 전체 구조와 폴더</h2>
+<svg viewBox="0 0 700 340" width="100%" role="img" aria-label="전체 구조">
+  <defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#0b6b5f"/></marker></defs>
+  <rect x="10" y="20" width="190" height="130" rx="10" fill="#effaf8" stroke="#0b6b5f" stroke-width="1.5"/>
+  <text x="105" y="42" text-anchor="middle" font-weight="bold" font-size="14" fill="#0b6b5f">브라우저 (React)</text>
+  <text x="105" y="64" text-anchor="middle" font-size="11" fill="#334">시작 폼 · 채팅 · 후보 카드</text>
+  <text x="105" y="82" text-anchor="middle" font-size="11" fill="#334">자주 묻는 질문 버튼 · 쪽 넘김</text>
+  <text x="105" y="104" text-anchor="middle" font-size="11" fill="#334">localStorage: 상담 기록·테마</text>
+  <text x="105" y="122" text-anchor="middle" font-size="11" fill="#334">API 키: sessionStorage(기본)</text>
+  <text x="105" y="140" text-anchor="middle" font-size="10" fill="#777">mock 모드: MSW가 가짜 응답</text>
+  <rect x="250" y="55" width="120" height="60" rx="10" fill="#f3f4f6" stroke="#6b7280"/>
+  <text x="310" y="80" text-anchor="middle" font-weight="bold" font-size="12">Vite 프록시</text>
+  <text x="310" y="98" text-anchor="middle" font-size="10" fill="#555">/api/* → :8000</text>
+  <rect x="420" y="10" width="270" height="150" rx="10" fill="#fff" stroke="#0b6b5f" stroke-width="2"/>
+  <text x="555" y="32" text-anchor="middle" font-weight="bold" font-size="14" fill="#0b6b5f">FastAPI 백엔드 (uvicorn :8000)</text>
+  <text x="555" y="54" text-anchor="middle" font-size="11" fill="#334">api.py: 엔드포인트·오류 처리·BYOK</text>
+  <text x="555" y="72" text-anchor="middle" font-size="11" fill="#334">question_analyzer: 질문 분석</text>
+  <text x="555" y="90" text-anchor="middle" font-size="11" fill="#334">search_pipeline → search_service: 검색</text>
+  <text x="555" y="108" text-anchor="middle" font-size="11" fill="#334">relevance_judge: AI 관련도 재판정</text>
+  <text x="555" y="126" text-anchor="middle" font-size="11" fill="#334">answer_service: 원문 기반 답변</text>
+  <text x="555" y="146" text-anchor="middle" font-size="10" fill="#777">repository: DB 접근 전담</text>
+  <line x1="200" y1="85" x2="248" y2="85" stroke="#0b6b5f" stroke-width="1.8" marker-end="url(#a)"/>
+  <line x1="370" y1="85" x2="418" y2="85" stroke="#0b6b5f" stroke-width="1.8" marker-end="url(#a)"/>
+  <text x="225" y="76" text-anchor="middle" font-size="9" fill="#0b6b5f">HTTP</text>
+  <rect x="330" y="230" width="150" height="80" rx="10" fill="#eff6ff" stroke="#1d4ed8"/>
+  <text x="405" y="254" text-anchor="middle" font-weight="bold" font-size="12" fill="#1d4ed8">ChromaDB</text>
+  <text x="405" y="272" text-anchor="middle" font-size="10" fill="#334">data/chroma</text>
+  <text x="405" y="288" text-anchor="middle" font-size="10" fill="#334">정책 11,850 레코드</text>
+  <rect x="140" y="230" width="170" height="80" rx="10" fill="#eff6ff" stroke="#1d4ed8"/>
+  <text x="225" y="254" text-anchor="middle" font-weight="bold" font-size="12" fill="#1d4ed8">임베딩 모델 (로컬)</text>
+  <text x="225" y="272" text-anchor="middle" font-size="10" fill="#334">Qwen3-Embedding-0.6B</text>
+  <text x="225" y="288" text-anchor="middle" font-size="10" fill="#334">질문 → 벡터 (서버 CPU)</text>
+  <rect x="520" y="230" width="170" height="80" rx="10" fill="#fff7ed" stroke="#c2410c"/>
+  <text x="605" y="254" text-anchor="middle" font-weight="bold" font-size="12" fill="#c2410c">Gemini API (외부)</text>
+  <text x="605" y="272" text-anchor="middle" font-size="10" fill="#334">분석 · 판정 · 답변</text>
+  <text x="605" y="288" text-anchor="middle" font-size="10" fill="#334">사용자 본인 키(BYOK)</text>
+  <line x1="470" y1="160" x2="410" y2="228" stroke="#1d4ed8" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="450" y1="160" x2="260" y2="228" stroke="#1d4ed8" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="600" y1="160" x2="605" y2="228" stroke="#c2410c" stroke-width="1.6" marker-end="url(#a)"/>
+  <text x="20" y="328" font-size="10" fill="#555">파란색 = 서버 PC 안에서 처리(무료), 주황색 = 외부 호출(키·한도·비용)</text>
+</svg>
+
+<h3>폴더 구조</h3>
+<table>
+  <tr><th style="width:22%">폴더</th><th>내용</th></tr>
+  <tr><td><code>app/</code></td><td>백엔드. <code>api.py</code>(FastAPI), <code>cli.py</code>(터미널 프로토타입), 검색·분석·답변·판정 서비스</td></tr>
+  <tr><td><code>frontend/src/</code></td><td><code>api/</code> 요청, <code>features/</code> 화면(start·chat·policy·settings), <code>state/</code> 대화 상태, <code>storage/</code> 상담 기록, <code>utils/</code>, <code>mocks/</code>, <code>types/contract.ts</code>(API 타입)</td></tr>
+  <tr><td><code>docs/</code></td><td>계약서(<code>function_contracts.md</code>), 계약서 수정 제안, 변경 요약, 설계 초안, 라벨링 가이드</td></tr>
+  <tr><td><code>scripts/</code></td><td>데이터 수집·적재, 거리 측정, 라벨링 시트·Reranker 실험 스크립트</td></tr>
+  <tr><td><code>data/</code></td><td><code>raw</code>(원본 XML), <code>processed</code>(JSONL), <code>evaluation</code>(평가 데이터), <code>chroma</code>(벡터 DB, Git 제외)</td></tr>
+  <tr><td><code>tests/</code></td><td>백엔드 단위 테스트, 평가 노트북</td></tr>
+</table>
+
+<h3>백엔드 모듈 역할</h3>
+<table>
+  <tr><th style="width:24%">파일</th><th>역할</th></tr>
+  <tr><td><code>api.py</code></td><td>엔드포인트 4종 + <code>/health</code>, 사용자 키(BYOK) 처리, 오류를 계약서 코드로 변환</td></tr>
+  <tr><td><code>search_pipeline.py</code></td><td>"분석 결과 → 검색 → (선택) AI 재판정 → 실패 시 거리순 대체"를 한곳에서 실행. API와 CLI가 함께 사용</td></tr>
+  <tr><td><code>search_service.py</code></td><td>질문 임베딩, 지역별 DB 조회, 점수 계산, 거리 하한, 나이 필터</td></tr>
+  <tr><td><code>search_profiles.py</code></td><td>질문 유형(route)별 검색 설정(상황형은 하한 0.55, 지역 가산점 0)</td></tr>
+  <tr><td><code>relevance_judge.py</code></td><td>Gemini로 후보 관련도를 한 번에 판정하고 관련 → 관련도 낮음 순으로 재구성</td></tr>
+  <tr><td><code>question_analyzer.py</code></td><td>Gemini로 질문의 route·intent·검색어·키워드 분석(구어체를 정책 용어로 번역)</td></tr>
+  <tr><td><code>answer_service.py</code></td><td>선택 정책의 원문 섹션만 모아 Gemini로 답변 생성, 근거·링크·grounded 처리, 질문 유형별 답변 구성</td></tr>
+  <tr><td><code>repository.py</code></td><td>ChromaDB 접근 전담(지역 목록, 벡터 조회, 정책 섹션·메타 조회)</td></tr>
+  <tr><td><code>gemini_retry.py</code>, <code>env.py</code></td><td>Gemini 재시도 규칙(429·5xx, 1초·2초 대기), <code>.env</code> 읽기</td></tr>
+  <tr><td><code>models.py</code>, <code>config.py</code>, <code>main.py</code></td><td>공통 모델·설정·터미널 진입점. <b>팀 협의 없이 수정 금지</b></td></tr>
+</table>
+
+<h2 class="pb">4. 사용자 화면 흐름</h2>
+<table>
+  <tr><th style="width:22%">화면/기능</th><th>동작</th></tr>
+  <tr><td>시작 폼</td><td>시·도 → 시·군·구(없는 지역은 비활성) 선택, 나이 0~120(비워도 됨). 지역 목록은 시작할 때 <code>GET /regions</code>로 받음</td></tr>
+  <tr><td>채팅</td><td>질문 입력 → 로딩 말풍선 → 결과. 대화 상태는 <code>useReducer</code>로 관리하며 계약서의 <code>ConversationState</code> 모양을 따름</td></tr>
+  <tr><td>후보 카드</td><td>정책명, 지역, 요약 한 줄, 범위 배지. 지자체/중앙부처를 섞지 않고 그룹별로 표시. 관련 후보가 먼저, 관련도 낮음(점선+배지)이 뒤에 이어지며 그룹마다 3개씩 이전/다음. 3개 이하면 버튼 없음</td></tr>
+  <tr><td>정책 선택</td><td>"현재 정책" 바 표시(원문 보기·다른 정책 찾기). 선택 안내 메시지와 이 바에 자주 묻는 질문 버튼 6개</td></tr>
+  <tr><td>답변 말풍선</td><td>마크다운 렌더링(원시 HTML 허용 안 함), 근거 접기, 첨부파일 다운로드/바로가기 버튼, 근거가 없으면 경고 표시</td></tr>
+  <tr><td>원문 보기</td><td>선택 정책의 섹션별 원문을 그대로 표시(<code>GET /policies/{id}</code>)</td></tr>
+  <tr><td>상담 목록(왼쪽)</td><td>날짜별 그룹, 전환·삭제·전체 삭제, ✎로 제목 수정(Enter 저장, Esc 취소, 비우면 첫 질문으로 복원, 최대 40자). 응답 대기 중에는 전환·삭제 불가</td></tr>
+  <tr><td>테마·API 키</td><td>라이트/다크/시스템 테마, "API 키" 버튼으로 본인 Gemini 키 입력</td></tr>
+</table>
+
+<h2>5. API 목록과 호출 시점</h2>
+<table>
+  <tr><th style="width:9%">Method</th><th style="width:25%">URL</th><th>역할</th><th style="width:20%">Gemini 호출</th></tr>
+  <tr><td>GET</td><td><code>/health</code></td><td>서버 준비 확인 → <code>{"status":"ok"}</code></td><td>없음</td></tr>
+  <tr><td>GET</td><td><code>/regions</code></td><td>시·도별 시·군·구 목록</td><td>없음</td></tr>
+  <tr><td>POST</td><td><code>/policies/search</code></td><td>질문 → 분석 → 검색 → 후보(지자체/중앙) + 판정 결과</td><td>1회(분석) + 1회(재판정, 상황형일 때)</td></tr>
+  <tr><td>GET</td><td><code>/policies/{policy_id}</code></td><td>정책명·지역·섹션별 원문</td><td>없음</td></tr>
+  <tr><td>POST</td><td><code>/policies/{policy_id}/ask</code></td><td>선택 정책에 대한 질문 → 원문 기반 답변</td><td>버튼 질문 1회, 직접 입력 2회</td></tr>
+</table>
+<p>검색 결과가 없는 것은 오류가 아니라 <b>200 + 빈 목록</b>입니다. <code>region.level2</code>가 없으면 <code>null</code>이 아니라 <code>""</code>(DB가 광역 정책을 빈 문자열로 저장). 서버는 상태가 없는(stateless) 구조라 지역·나이·선택 정책은 프론트가 들고 있다가 요청마다 보냅니다.</p>
+
+<h3>어떤 경우에 API를 호출하나 (프론트 동작 기준)</h3>
+<table>
+  <tr><th style="width:26%">사용자 행동</th><th style="width:25%">호출</th><th>서버 안에서 일어나는 일</th></tr>
+  <tr><td>앱 시작(시작 폼)</td><td><code>GET /regions</code></td><td>시작할 때 한 번 읽어 둔 지역 목록 반환(DB 조회 없음)</td></tr>
+  <tr><td>질문 입력(정책 선택 전)</td><td><code>POST /policies/search</code></td><td><span class="tag g">Gemini</span> 질문 분석 → <span class="tag l">로컬</span> 임베딩 → <span class="tag l">DB</span> 지역별 조회 → <span class="tag g">Gemini</span> 관련도 재판정(상황형 질문, 기본 켜짐) → 응답</td></tr>
+  <tr><td>후보 카드 선택</td><td>없음</td><td>프론트 상태만 바뀜(현재 정책 지정, 안내 메시지 + 버튼 표시)</td></tr>
+  <tr><td>이전/다음 쪽 넘김, 관련도 낮은 후보 보기</td><td>없음</td><td>이미 받은 후보(그룹당 최대 12개)를 화면에서 3개씩 보여 줌</td></tr>
+  <tr><td>"원문 보기"</td><td><code>GET /policies/{id}</code></td><td>DB에서 섹션별 원문 조회</td></tr>
+  <tr><td>자주 묻는 질문 버튼</td><td><code>POST /policies/{id}/ask</code> + <code>intent</code></td><td>분석 생략 → 해당 유형의 섹션 조회 → <span class="tag g">Gemini</span> 답변 1회</td></tr>
+  <tr><td>직접 입력(정책 선택 후)</td><td><code>POST /policies/{id}/ask</code></td><td><span class="tag g">Gemini</span> 질문 분석 → 현재 정책 질문이면 <span class="tag g">Gemini</span> 답변, 아니면 답변 없이 "다른 정책 찾기" 안내</td></tr>
+  <tr><td>다른 정책 찾기 / 새 상담</td><td>없음</td><td>프론트 상태 초기화(상담 기록은 브라우저에 남음)</td></tr>
+  <tr><td>상담 전환·삭제·제목 수정</td><td>없음</td><td>모두 브라우저 localStorage 안에서 처리</td></tr>
+</table>
+<p>프론트 요청 제한 시간은 30초입니다(Gemini 재시도 최대 3회를 고려). 터미널 프로토타입(<code>python -m app.main</code>)은 같은 서비스를 직접 호출하며 AI 재판정은 하지 않습니다.</p>
+
+<h2 class="pb">6. 질문 분석 (route·intent)</h2>
+<p>질문이 들어오면 Gemini가 아래 값을 JSON으로 돌려주고, 코드가 허용값·자료형을 검증합니다. 현재 정책이 없는데 "후속 질문"으로 분류되면 코드가 <code>situation_search</code> 또는 <code>specific_policy</code>로 고칩니다. 분석은 <code>seed=0</code>, <code>temperature=0</code>으로 같은 질문에 같은 결과가 나오게 합니다.</p>
+<table>
+  <tr><th style="width:24%">route</th><th>의미 / 이후 처리</th></tr>
+  <tr><td><code>situation_search</code></td><td>상황을 말하며 추천 요청("월세가 부담돼요"). 엄격한 검색 설정 + AI 재판정 적용</td></tr>
+  <tr><td><code>specific_policy</code></td><td>특정 정책을 직접 언급. 기본 검색 설정(하한 0.60), 정책명 보너스로 우대, 재판정 안 함</td></tr>
+  <tr><td><code>current_policy_question</code></td><td>이미 고른 정책에 대한 후속 질문 → 원문 기반 답변</td></tr>
+</table>
+<table>
+  <tr><th style="width:24%">intent (최대 3개)</th><th>읽는 원문 섹션</th></tr>
+  <tr><td><code>eligibility</code> 지원 대상</td><td><code>target_criteria</code></td></tr>
+  <tr><td><code>benefit</code> 지원 내용</td><td><code>benefit</code></td></tr>
+  <tr><td><code>application</code> 신청 방법</td><td><code>application</code> + <code>administrative</code></td></tr>
+  <tr><td><code>administrative</code> 기간·행정</td><td><code>administrative</code> + <code>contact_source</code></td></tr>
+  <tr><td><code>required_documents</code> 필요 서류</td><td><code>documents</code> + <code>application</code></td></tr>
+  <tr><td><code>contact</code> 문의처</td><td><code>contact_source</code></td></tr>
+  <tr><td><code>policy_search</code> / <code>policy_overview</code></td><td><code>candidate_summary</code> / <code>overview</code></td></tr>
+</table>
+<p>분석기는 구어체를 정책 용어로 번역합니다(예: "배고파" → "무료 급식 식사 지원"). 이 번역 결과가 <code>search_query</code>로 검색에 쓰입니다. 읽을 섹션(<code>requested_sections</code>)은 Gemini가 아니라 <b>코드가 intent 표로 정합니다.</b></p>
+
+<h2>7. 검색이 동작하는 순서</h2>
+<div class="steps">
+  <div class="step"><div class="n">1</div><div class="t"><span class="tag g">Gemini</span> <b>질문 분석</b> — route, intents, 검색어(구어체 번역), 포함·제외 키워드를 얻음. 429·5xx는 1초, 2초 쉬며 최대 3회 재시도.</div></div>
+  <div class="step"><div class="n">2</div><div class="t"><span class="tag l">로컬</span> <b>질문 임베딩</b> — 분석기 검색어와 <b>원문 질문</b>(상황형만)을 각각 Qwen3 임베딩으로 벡터화(서버 CPU). 두 검색어를 쓰는 이유: 띄어쓰기·말투에 따라 분석기 검색어가 흔들려도 정답이 사라지지 않게 하기 위함.</div></div>
+  <div class="step"><div class="n">3</div><div class="t"><span class="tag l">DB</span> <b>범위별 조회</b> — 지자체는 <i>시군구</i>(선택한 시·군·구)와 <i>광역</i>(시·도 전체 정책), 시·군·구가 없으면 <i>시도</i>, 별도로 <i>중앙부처</i>(전국) 범위를 각각 조회(<code>candidate_summary</code> 레코드 대상, 범위당 30개).</div></div>
+  <div class="step"><div class="n">4</div><div class="t"><span class="tag c">코드</span> <b>나이 필터</b> — 나이를 입력했고 정책의 나이 조건이 명확(<code>age_status=exact</code>)할 때만 최소·최대 나이로 제외. 불명확하면 제외하지 않음.</div></div>
+  <div class="step"><div class="n">5</div><div class="t"><span class="tag c">코드</span> <b>점수 계산</b> — 점수 = (1 − 거리) + 범위 가산점 + 정책명 보너스 + 키워드 가산 − 제외 감점.</div></div>
+  <div class="step"><div class="n">6</div><div class="t"><span class="tag c">코드</span> <b>거리 하한</b> — 거리가 하한보다 먼 후보는 제외(계약서 규칙: 관련 없으면 억지로 채우지 않음). 단, 정책명 단어가 질문에 모두 있으면 거리와 무관하게 남김.</div></div>
+  <div class="step"><div class="n">7</div><div class="t"><span class="tag c">코드</span> <b>정렬·분리</b> — 두 검색어의 결과를 합쳐 정책별로 점수가 높은 후보 하나만 남기고, 지자체/중앙부처를 섞지 않고 각각 점수순 정렬.</div></div>
+  <div class="step"><div class="n">7-1</div><div class="t"><span class="tag c">코드</span> <b>빈 결과 구제</b> — 상황형 질문이 0건이면 하한을 0.60으로 <b>한 번만</b> 완화해 다시 검색(1위가 0.56처럼 하한을 아슬아슬하게 넘은 경우). 구제된 후보는 "관련도 낮음"으로 가려지며, 무의미 질문은 완화해도 빈 결과.</div></div>
+  <div class="step"><div class="n">8</div><div class="t"><span class="tag g">Gemini</span> <b>AI 재판정</b>(상황형 질문, 기본 켜짐) — 범위별 후보 12개를 한 번에 판정(8절). 실패하면 거리순 후보 전체로 대체.</div></div>
+</div>
+<table>
+  <tr><th style="width:30%">값</th><th style="width:20%">설정</th><th>설명</th></tr>
+  <tr><td>거리 하한</td><td>기본 0.60 / 상황형 0.55</td><td>평가 질문 280개 실측: 정답의 99.2% 보존, 무의미 질문 7개 모두 빈 결과. 상황형은 더 엄격(<code>search_profiles.py</code>)</td></tr>
+  <tr><td>범위 가산점</td><td>시군구 +0.60 / 광역·시도 +0.35 / 중앙 +0.10</td><td>상황형 질문은 비율 0(거리 중심 정렬) — 먼 시군구 정책이 가까운 광역 정책보다 위로 가는 문제를 막음</td></tr>
+  <tr><td>정책명 보너스</td><td>최대 +0.5</td><td>정책명 단어(일반어 제외)가 질문에 있는 비율에 비례. 0.5(전부 일치)면 거리 하한 예외</td></tr>
+  <tr><td>키워드 가산·감점</td><td>정책명 ±0.10, 본문 ±0.05</td><td>분석기의 포함/제외 키워드, 최대 3개까지. "지원·청년·사업" 같은 일반어는 무시. 후보를 거르지 않고 순서만 바꿈</td></tr>
+  <tr><td>후보 풀(재판정)</td><td>범위별 12개</td><td>판정을 쓰지 않는 경로는 범위별 3개</td></tr>
+</table>
+
+<h2 class="pb">8. AI 관련도 재판정과 후보 표시</h2>
+<p><b>왜 필요한가</b>: 거리만으로는 관련 정책과 무관한 정책이 구분되지 않았습니다(상황형 질문 15개 측정: 관련 중앙값 거리 0.45, 무관 0.57로 분포가 겹침). 그래서 검색된 후보를 질문과 함께 Gemini에 보내 "질문한 사람에게 실제로 도움이 되는 정책인가"를 판정합니다.</p>
+<div class="steps">
+  <div class="step"><div class="n">1</div><div class="t">후보 12개(범위별)의 정책명과 요약 300자를 질문과 함께 <b>Gemini 1회 호출</b>(<code>seed=0</code>, 시간 제한 10초).</div></div>
+  <div class="step"><div class="n">2</div><div class="t">후보별 관련 여부(true/false)를 받아, 판정이 누락·중복되면 실패로 처리. 5xx는 1회만 재시도, 429는 재시도하지 않음.</div></div>
+  <div class="step"><div class="n">3</div><div class="t">범위별로 <b>관련 판정 후보(점수순) → 무관 판정 후보</b> 순으로 재구성하고, 무관으로 본 정책 ID를 <code>low_relevance_ids</code>로 응답에 담음. <b>삭제하지 않습니다.</b></div></div>
+  <div class="step"><div class="n">4</div><div class="t">판정이 실패하면(한도 초과·시간 초과·형식 오류) 오류 없이 <b>거리순 후보 전체</b>를 돌려주고 <code>relevance_checked=false</code>.</div></div>
+</div>
+<p>판정 기준: 질문의 상황·필요와 직접 관련이면 관련, 단어만 비슷하면 무관, 지원 대상이 질문자와 명백히 맞지 않으면 무관(예: 질문에 언급이 없는데 장애인·보훈 전용), 지역은 기준 아님, 확실하지 않으면 무관. 질문·정책 문구 안의 지시문은 따르지 않도록 지시합니다.</p>
+<h3>프론트의 표시 규칙</h3>
+<table>
+  <tr><th style="width:34%">상황</th><th>화면 동작</th></tr>
+  <tr><td>판정 성공(<code>relevance_checked=true</code>)</td><td><code>low_relevance_ids</code>에 든 후보가 "관련도 낮음"</td></tr>
+  <tr><td>판정 안 함·실패</td><td>거리 0.50 초과 후보를 "관련도 낮음"으로 간주(백엔드 <code>SITUATION_CONFIDENT_DISTANCE</code>와 같은 값)</td></tr>
+  <tr><td>정책명을 말한 질문(상황형 아님)</td><td>거리와 상관없이 모두 일반 후보로 표시</td></tr>
+  <tr><td>관련 후보가 있을 때</td><td>관련 후보 뒤에 관련도 낮음 후보가 배지(점선 테두리 + 안내문)와 함께 이어지고, 3개씩 이전/다음</td></tr>
+  <tr><td>관련 후보가 하나도 없을 때</td><td>"관련도가 높은 정책을 찾지 못했어요" 안내 + "관련도가 낮은 후보 N건 보기" 버튼(누르면 같은 방식으로 펼침)</td></tr>
+  <tr><td>한쪽 그룹만 비었을 때</td><td>다른 그룹에 결과가 있다는 안내 문구로 구분</td></tr>
+</table>
+
+<h2>9. 후속 질문과 답변 (자주 묻는 질문 버튼)</h2>
+<p>정책을 고르면 이후 질문은 검색이 아니라 <code>POST /policies/{id}/ask</code>로 갑니다. 두 가지 경로가 있습니다.</p>
+<table>
+  <tr><th style="width:18%">경로</th><th>동작</th><th style="width:18%">Gemini</th></tr>
+  <tr><td>버튼 질문</td><td>요청에 <code>intent</code>(예: <code>eligibility</code>)를 함께 보냄 → 서버가 <b>질문 분석을 건너뛰고</b> 해당 유형의 섹션만 읽어 답변. 항상 같은 섹션을 읽어 결과가 안정적</td><td>1회(답변)</td></tr>
+  <tr><td>직접 입력</td><td>질문 분석 → 현재 정책 질문이면 분석이 정한 intent·섹션으로 답변. 정책과 무관하다고 분류되면 <code>answer=null</code>(화면은 "다른 정책 찾기" 안내), 분류가 애매하면 "확인할 수 없음" 답변(<code>grounded=false</code>)</td><td>2회(분석+답변)</td></tr>
+</table>
+<h3>답변은 이렇게 만들어집니다</h3>
+<div class="steps">
+  <div class="step"><div class="n">1</div><div class="t">DB에서 <b>선택 정책의 원문 섹션</b>만 가져옴(overview, target_criteria, benefit, application, documents, contact_source, administrative).</div></div>
+  <div class="step"><div class="n">2</div><div class="t">질문 유형이 요구하는 섹션만 골라 프롬프트에 넣고, 유형별 <b>[답변 구성]</b> 안내를 함께 전달.</div></div>
+  <div class="step"><div class="n">3</div><div class="t"><span class="tag g">Gemini</span>가 원문만 근거로 답변·근거 구절·사용 섹션·grounded를 JSON으로 반환(<code>temperature=0</code>).</div></div>
+  <div class="step"><div class="n">4</div><div class="t"><span class="tag c">코드</span>가 검증: 실제 원문에 없는 근거 구절은 버리고, 근거가 없으면 <code>grounded=false</code>. 첨부파일·누리집·법령 링크는 <b>AI가 아니라 코드가 원문에서 추출</b>(다운로드/바로가기 버튼).</div></div>
+</div>
+<table>
+  <tr><th style="width:22%">질문 유형(버튼)</th><th>답변 구성(원문에 있는 항목만)</th></tr>
+  <tr><td>지원 대상</td><td>누가 대상인가(연령·거주지·소득·재산·취업/학적 상태) → 제외·우선 대상 → 신청 전 확인할 점</td></tr>
+  <tr><td>지원 내용·금액</td><td>무엇을 지원하나 → 금액·횟수·기간·한도 → 지급 방식·조건</td></tr>
+  <tr><td>신청 방법</td><td>어디서·어떻게 신청 → 절차 순서 → 신청 시기</td></tr>
+  <tr><td>신청 기간</td><td>접수 기간 → 사업 기간·마감 → 상시·연중 여부</td></tr>
+  <tr><td>필요 서류</td><td>제출 서류 목록 → 서식·첨부파일 → 발급처·유의사항</td></tr>
+  <tr><td>문의처</td><td>문의 기관·부서 → 전화·누리집 → 접수 장소</td></tr>
+</table>
+<div class="box">원칙: 원문에 없는 금액·나이·기간·서류를 만들지 않고, 자격을 확정하지 않으며("예비 안내"), 확인되지 않는 항목은 항목마다 반복하지 않고 한 줄로 묶어 "제공된 공식 자료에서는 확인되지 않습니다"라고 안내합니다. 직접 입력한 질문도 분석기가 정한 intent로 같은 구성을 씁니다.</div>
+
+<h2 class="pb">10. API 키(BYOK)·보안·오류 처리</h2>
+<h3>사용자 본인 키(BYOK)</h3>
+<ul>
+  <li>사용자가 화면의 "API 키"에 <b>본인 Gemini 키</b>를 입력합니다. 기본은 탭을 닫으면 사라지는 <code>sessionStorage</code>, "기억하기"를 고르면 <code>localStorage</code>에 저장합니다.</li>
+  <li>키는 검색·질문 요청의 헤더 <code>X-Gemini-Api-Key</code>로만 전달됩니다(URL·본문·로그에 넣지 않음). 서버는 <b>요청마다</b> 그 키로 Gemini 클라이언트를 만들어 쓰고 <b>저장하지 않습니다.</b></li>
+  <li>서버 <code>.env</code>의 키로 대신 처리하는 폴백은 <b>기본 꺼짐</b>입니다(<code>WELFAREONE_ALLOW_SERVER_KEY=true</code>일 때만). 공개 배포에서 운영자 키가 소진되지 않게 하기 위함입니다.</li>
+  <li>로그에는 오류 종류만 남기고 질문·키·응답 본문은 남기지 않습니다. 실제 키 값은 저장소·<code>.env.example</code>에 넣지 않습니다.</li>
+</ul>
+<h3>오류 응답과 화면 안내</h3>
+<p>오류는 항상 <code>{"error": {"code", "message", "details"}}</code> 형식이며, 사용자에게 보이는 한국어 문구는 프론트(<code>constants/text.ts</code>)가 만듭니다.</p>
+<table>
+  <tr><th style="width:8%">HTTP</th><th style="width:25%">code</th><th>언제</th><th style="width:28%">화면 동작</th></tr>
+  <tr><td>401</td><td><code>API_KEY_REQUIRED</code></td><td>키가 없고 서버 키 폴백이 꺼짐</td><td>키 입력창 자동 열림</td></tr>
+  <tr><td>401</td><td><code>INVALID_API_KEY</code></td><td>키 형식이 틀리거나 Gemini가 거부(401/403)</td><td>키 입력창 열림(재입력)</td></tr>
+  <tr><td>400</td><td><code>INVALID_REGION</code></td><td>목록에 없는 지역</td><td>지역 재선택 안내</td></tr>
+  <tr><td>422</td><td><code>INVALID_REQUEST</code></td><td>빈·500자 초과 질문, 허용 밖 <code>intent</code> 등</td><td>입력 확인 안내</td></tr>
+  <tr><td>404</td><td><code>POLICY_NOT_FOUND</code></td><td>없는 정책 ID</td><td>다른 정책 선택 안내</td></tr>
+  <tr><td>429</td><td><code>LLM_RATE_LIMITED</code></td><td>Gemini 한도 초과</td><td>잠시 후 재시도 안내</td></tr>
+  <tr><td>502</td><td><code>LLM_RESPONSE_INVALID</code></td><td>AI 응답 처리 실패</td><td>재시도 안내</td></tr>
+  <tr><td>500</td><td><code>DATABASE_ERROR</code> / <code>INTERNAL_ERROR</code></td><td>DB 오류 / 예상 못한 오류</td><td>재시도 안내</td></tr>
+  <tr><td>-</td><td><code>NETWORK_ERROR</code> / <code>TIMEOUT</code></td><td>(프론트) 서버 연결 실패 / 30초 초과</td><td>상태 확인 안내</td></tr>
+</table>
+<h3>실패해도 멈추지 않는 부분</h3>
+<ul>
+  <li>AI 재판정 실패 → 오류 대신 거리순 후보 전체로 대체(<code>relevance_checked=false</code>).</li>
+  <li>Gemini 429·5xx → 분석·답변은 자동 재시도(1초, 2초 대기, 최대 3회), 그래도 실패하면 위 오류 코드로 안내.</li>
+  <li>저장소(localStorage) 사용 불가·용량 부족 → 오래된 상담부터 지우며 재시도, 그래도 안 되면 저장만 건너뛰고 화면은 계속 동작.</li>
+</ul>
+
+<h2>11. 브라우저에 저장되는 데이터</h2>
+<table>
+  <tr><th style="width:30%">항목</th><th style="width:20%">저장소</th><th>내용</th></tr>
+  <tr><td>상담 기록</td><td>localStorage</td><td>상담마다 키를 따로 저장(<code>.conv.&lt;id&gt;</code>)하고 목록용 요약은 <code>.index</code>. 최대 30개 상담, 상담당 메시지 200개. 후보의 개발용 값(metadata·reasons)은 비워 용량 절감. 다른 탭에서 바뀌면 목록 갱신</td></tr>
+  <tr><td>마지막으로 본 상담</td><td>localStorage</td><td>새로고침 후 복원</td></tr>
+  <tr><td>테마</td><td>localStorage</td><td>시스템/라이트/다크</td></tr>
+  <tr><td>Gemini API 키</td><td>sessionStorage(기본) / localStorage</td><td>상담 기록과 별도 키로 저장, 상담 기록에는 절대 포함하지 않음</td></tr>
+</table>
+<p>서버에는 사용자 데이터가 저장되지 않습니다(stateless). 공용 PC에서는 사용 후 기록 삭제를 안내합니다.</p>
+
+<h2 class="pb">12. 데이터(DB) 만드는 과정</h2>
+<div class="steps">
+  <div class="step"><div class="n">1</div><div class="t"><b>수집</b> — <code>scripts/download_welfare.py</code>: 복지로 공공 API에서 목록·상세 XML을 <code>data/raw</code>로 내려받음.</div></div>
+  <div class="step"><div class="n">2</div><div class="t"><b>변환</b> — <code>scripts/export_welfare_jsonl.py</code>: XML을 읽기 쉬운 JSONL(<code>data/processed</code>)로 변환.</div></div>
+  <div class="step"><div class="n">3</div><div class="t"><b>적재</b> — <code>scripts/import_welfare_chroma_qwen_v3.py</code>: 정책을 의미 단위 섹션으로 나누고 정책마다 <code>candidate_summary</code> 한 건을 만들어 Qwen3 임베딩과 함께 ChromaDB에 저장(원본 XML이 기준).</div></div>
+</div>
+<table>
+  <tr><th style="width:26%">섹션(<code>section</code>)</th><th>내용 / 쓰임</th></tr>
+  <tr><td><code>candidate_summary</code></td><td>정책 요약(정책명·지역·생애주기·개요·대상·지원 내용, 최대 약 450자). <b>검색 대상</b></td></tr>
+  <tr><td><code>overview</code>, <code>target_criteria</code>, <code>benefit</code></td><td>개요, 지원 대상·선정 기준, 지원 내용·금액. 답변·원문 보기에 사용</td></tr>
+  <tr><td><code>application</code>, <code>documents</code>, <code>contact_source</code>, <code>administrative</code></td><td>신청 방법, 서류, 문의처·출처, 기간·수정일·법령</td></tr>
+</table>
+<p>레코드의 메타데이터에는 <code>policy_id</code>(예: <code>local:WLF00006618</code>), 출처(<code>source</code>: local/national), 시·도·시·군·구, 나이 범위와 <code>age_status</code> 등이 들어 있고, 검색은 이 값으로 지역·범위를 필터링합니다. <b>정책 식별은 항상 <code>policy_id</code></b>입니다. DB 원본과 컬렉션명은 팀 합의 없이 바꾸거나 재적재하지 않습니다(임베딩 모델도 DB를 만든 모델과 같아야 함).</p>
+
+<h2>13. 실행·설정·테스트</h2>
+<table>
+  <tr><th style="width:24%">용도</th><th>명령 / 값</th></tr>
+  <tr><td>백엔드 실행</td><td><code>uvicorn app.api:app --port 8000</code> (프로젝트 루트, 시작할 때 모델 로딩으로 시간이 걸림)</td></tr>
+  <tr><td>프론트 실행</td><td><code>cd frontend; npm install; npm run dev</code> (기본 5173, 사용 중이면 Vite가 알려 주는 포트). 실제 연결은 <code>frontend/.env.local</code>에 <code>VITE_USE_MOCK=false</code>, 기본값은 mock</td></tr>
+  <tr><td>터미널 프로토타입</td><td><code>python -m app.main</code> (서버 키 <code>GEMINI_API_KEY</code> 필요)</td></tr>
+  <tr><td>환경 변수</td><td><code>GEMINI_API_KEY</code>(터미널·서버 폴백 전용), <code>GEMINI_MODEL</code>, <code>WELFAREONE_ALLOW_SERVER_KEY</code>(기본 꺼짐), <code>WELFAREONE_LLM_RERANK</code>(<code>0</code>이면 AI 재판정 끔)</td></tr>
+  <tr><td>백엔드 테스트</td><td><code>python -m unittest discover -s tests</code> (키·DB 불필요, 131개)</td></tr>
+  <tr><td>실DB 스모크</td><td><code>WELFAREONE_REAL_TESTS=1</code>을 켜고 <code>python -m unittest tests.test_real_smoke</code></td></tr>
+  <tr><td>프론트 테스트·빌드</td><td><code>npm test</code>(39개), <code>npm run typecheck</code>, <code>npm run build</code></td></tr>
+</table>
+<p>준비물: Python 패키지(<code>pip install -r requirements.txt</code>), 벡터 DB(<code>data/chroma</code>), 임베딩 모델(Hugging Face 캐시), 사용자 Gemini 키. <code>.env</code>·키·<code>data/chroma</code>는 커밋하지 않습니다.</p>
+
+<h2 class="pb">14. 비용·지연, 한계와 다음 작업</h2>
+<h3>Gemini 호출 횟수와 지연</h3>
+<table>
+  <tr><th style="width:36%">경우</th><th style="width:16%">Gemini 호출</th><th>측정한 시간(참고)</th></tr>
+  <tr><td>정책 검색(상황형, 재판정 켜짐)</td><td>2회</td><td>질문 분석 약 1.4초 + 판정 약 2.4초(후보 12개 기준). 첫 요청은 더 걸릴 수 있음</td></tr>
+  <tr><td>정책 검색(정책명 질문 등, 재판정 없음)</td><td>1회</td><td>분석만</td></tr>
+  <tr><td>버튼 질문</td><td>1회</td><td>약 1.3~2.6초</td></tr>
+  <tr><td>직접 입력 후속 질문</td><td>2회</td><td>분석 약 1.4초 + 답변 약 1.8초</td></tr>
+  <tr><td>원문 보기·지역 목록·쪽 넘김·기록 관리</td><td>0회</td><td>즉시</td></tr>
+</table>
+<p>사용자 본인 키를 쓰므로 호출 비용과 한도(429)는 사용자 키마다 다릅니다. 재판정은 <code>WELFAREONE_LLM_RERANK=0</code>으로 끌 수 있습니다.</p>
+
+<h3>알아 둘 한계</h3>
+<ul>
+  <li><b>평가 근거가 AI 판정</b>: 관련도 정답을 사람이 아닌 AI가 판정했고 질문도 15개뿐이라 수치는 낙관적일 수 있습니다. 사람 라벨링(질문 50개)으로 기준값을 다시 확정할 예정입니다.</li>
+  <li><b>집단 전용 정책</b>: 장애인·보훈 전용 등은 AI 판정이 "관련도 낮음"으로 뒤로 보냅니다. "대상 한정" 표시 방식은 논의가 필요합니다.</li>
+  <li><b>원문이 없는 항목</b>: 서류·신청 기간이 DB에 없는 정책은 해당 버튼에서 "확인되지 않습니다"가 나옵니다.</li>
+  <li><b>검색 대상</b>이 요약(<code>candidate_summary</code>) 한 건이라 대상·조건 문구가 잘리면 매칭이 약해집니다.</li>
+  <li><b>정책 외 질문</b>은 분리된 경로가 없어 "확인할 수 없음" 답변으로 처리됩니다(기존 동작 유지).</li>
+  <li>모든 AI 단계가 Gemini에 의존해 모델이 바뀌면 결과가 조금 달라질 수 있습니다(seed 고정·폴백으로 완화).</li>
+</ul>
+<h3>다음 작업 후보</h3>
+<ul>
+  <li>사람 라벨링으로 거리 기준(0.55/0.50), 후보 수(12), 재판정 켜짐 기본값 확정 (<code>docs/labeling/labeling_guide.pdf</code>)</li>
+  <li>검색어의 일반어("지원", "청년")로 같은 정책이 반복되는 문제, 섹션 단위 검색 확장</li>
+  <li>자격 판정(<code>eligibility_service</code>), 서류 체크리스트, 신청서 초안, 대화 상태·LangGraph (<code>docs/DIRECTION_C_PLAN.md</code>)</li>
+  <li>Reranker 모델 병행은 실험에서 상황형 질문 개선이 확인되지 않아 보류</li>
+  <li>API 변경(<code>relevance_checked</code>, <code>low_relevance_ids</code>, <code>/ask</code>의 <code>intent</code>)의 계약서 반영 합의 (<code>docs/contract_update_proposal.md</code>)</li>
+</ul>
+
+<h2>부록. 용어 풀이</h2>
+<table>
+  <tr><th style="width:22%">용어</th><th>뜻</th></tr>
+  <tr><td>route / intent</td><td>route = 질문이 어떤 처리 경로로 가는지(상황 검색 / 정책명 / 후속 질문). intent = 질문의 목적(대상·금액·신청 방법 등)</td></tr>
+  <tr><td>임베딩 / 거리</td><td>글을 숫자 벡터로 바꾼 것. 두 글의 거리가 가까울수록(0에 가까울수록) 의미가 비슷함(코사인 거리)</td></tr>
+  <tr><td>RAG</td><td>검색(Retrieval)으로 근거 원문을 찾아 그 원문만으로 AI가 답변(Generation)하게 하는 방식</td></tr>
+  <tr><td>BYOK</td><td>Bring Your Own Key. 사용자가 본인 API 키를 직접 넣어 쓰는 방식</td></tr>
+  <tr><td>재판정(rerank)</td><td>검색된 후보를 AI가 다시 보고 관련 여부를 판단해 순서를 바로잡는 단계</td></tr>
+  <tr><td>grounded</td><td>답변의 핵심이 제공된 원문으로 뒷받침되는지 여부. false면 화면에 경고</td></tr>
+  <tr><td>seed / temperature</td><td>AI 응답의 무작위성을 줄여 같은 입력에 같은 결과가 나오게 하는 설정</td></tr>
+  <tr><td>폴백(fallback)</td><td>한 단계가 실패했을 때 오류 대신 더 단순한 방식으로 대체하는 동작</td></tr>
+  <tr><td>stateless</td><td>서버가 사용자 상태를 저장하지 않고 요청마다 필요한 정보(지역·나이·선택 정책)를 받는 구조</td></tr>
+  <tr><td>MSW / mock</td><td>백엔드 없이 브라우저에서 가짜 API 응답을 만들어 화면을 개발·검증하는 도구</td></tr>
+</table>
+
+</body>
+</html>

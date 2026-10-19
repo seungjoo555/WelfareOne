@@ -19,13 +19,28 @@ export const ERROR_MESSAGES: Record<AppErrorCode, string> = {
 export const SERVICE_NAME = "WelfareOne";
 
 // 후보 그룹이 비었을 때의 안내(지자체와 중앙부처는 따로 검색하므로 한쪽만 비는 경우가 흔하다)
-export const EMPTY_GROUP_TEXT = "관련 정책을 찾지 못했습니다.";
+export const EMPTY_RESULT_HINT = "필요한 지원을 함께 적으면 잘 찾아요. 예: '자격증 취득 지원', '월세 지원', '교통비 지원'";
+export const EMPTY_GROUP_TEXT = "관련도가 높은 정책을 찾지 못했어요.";
 export const EMPTY_LOCAL_BUT_NATIONAL_TEXT =
-  "선택한 지역에서는 관련 정책을 찾지 못했어요. 전국 대상인 중앙부처 정책을 확인해 보세요.";
-export const EMPTY_NATIONAL_BUT_LOCAL_TEXT = "관련 중앙부처 정책은 찾지 못했어요. 지역 정책을 확인해 보세요.";
+  "선택한 지역에서는 관련도가 높은 정책을 찾지 못했어요. 전국 대상인 중앙부처 정책을 확인해 보세요.";
+export const EMPTY_NATIONAL_BUT_LOCAL_TEXT = "관련도가 높은 중앙부처 정책은 찾지 못했어요. 지역 정책을 확인해 보세요.";
+// 상황형 질문에서 거리가 먼 후보는 접어 두고 사용자가 펼쳐서 볼 수 있게 한다
+export const lowRelevanceSummary = (count: number) => `관련도가 낮은 후보 ${count}건 보기`;
+export const LOW_RELEVANCE_BADGE = "관련도 낮음";
+export const QUICK_QUESTIONS_LABEL = "자주 묻는 질문";
+export const policySelectedText = (title: string) => `‘${title}’ 정책을 선택했어요.`;
+export const QUICK_PROMPT = "궁금한 점을 버튼으로 바로 물어보거나, 아래 입력창에 직접 질문해 보세요.";
+export const PAGER_PREV = "이전";
+export const PAGER_NEXT = "다음";
+export const pagerStatus = (page: number, total: number) => `${page} / ${total}쪽`;
+export const pagerLabel = (title: string) => `${title} 쪽 이동`;
+export const LOW_RELEVANCE_NOTE = "질문과 덜 맞을 수 있는 후보예요. 지원 대상과 조건을 꼭 확인해 주세요.";
 
 // 상담 기록(localStorage)
 export const INTERRUPTED_NOTICE = "이 질문은 답변을 받기 전에 페이지가 닫혀 응답이 없어요. 질문을 다시 보내 주세요.";
+export const HISTORY_RENAME_INPUT_LABEL = "상담 제목";
+export const HISTORY_RENAME_HINT = "비우면 첫 질문으로 되돌아가요";
+export const historyRenameLabel = (title: string) => `${title} 상담 제목 수정`;
 export const HISTORY_EMPTY = "아직 저장된 상담이 없어요. 질문을 보내면 여기에 기록돼요.";
 export const HISTORY_PRIVACY = "상담 기록은 이 브라우저에만 저장돼요. 공용 PC에서는 사용 후 삭제해 주세요.";
 export const HISTORY_SAVE_ERRORS = {

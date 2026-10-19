@@ -1,21 +1,26 @@
 import {
   EMPTY_LOCAL_BUT_NATIONAL_TEXT,
   EMPTY_NATIONAL_BUT_LOCAL_TEXT,
+  EMPTY_RESULT_HINT,
   ERROR_MESSAGES,
   INTERRUPTED_NOTICE,
   OPENER_TEXT,
+  QUICK_PROMPT,
+  policySelectedText,
 } from "../../constants/text";
 import { INTENT_LABELS } from "../../constants/sections";
 import type { Message } from "../../types/chat";
-import type { PolicyCandidate } from "../../types/contract";
+import type { AskIntent, PolicyCandidate } from "../../types/contract";
+import { splitByRelevance } from "../../utils/relevance";
 import { AnswerBubble } from "../policy/AnswerBubble";
 import { CandidateGroup } from "../policy/CandidateGroup";
+import { QuickQuestions } from "../policy/QuickQuestions";
 import { ExampleChips } from "./ExampleChips";
 
 export interface MessageActions {
   selectedPolicyId: string | null;
   pending: boolean;
-  onSend: (text: string) => void;
+  onSend: (text: string, intent?: AskIntent) => void;
   onSelectPolicy: (policy: PolicyCandidate) => void;
   onClearPolicy: () => void;
 }
@@ -53,8 +58,22 @@ export function MessageItem({ message, actions }: { message: Message; actions: M
           <p>{message.text}</p>
         </AiRow>
       );
+    case "ai_policy_selected":
+      return (
+        <AiRow>
+          <p>{policySelectedText(message.policy_title)}</p>
+          <p className="muted">{QUICK_PROMPT}</p>
+          <QuickQuestions disabled={actions.pending} onAsk={actions.onSend} />
+        </AiRow>
+      );
     case "ai_candidates": {
       const empty = message.local_policies.length === 0 && message.national_policies.length === 0;
+      // 상황형 질문이면 거리가 먼 후보를 접어 둔다. 안내 문구도 "보여 줄 후보" 기준으로 고른다.
+      const fold = message.analysis.route === "situation_search";
+      // 서버가 LLM으로 관련도를 판정했으면 그 결과로, 아니면 거리로 접는다
+      const lowIds = message.relevance_checked ? (message.low_relevance_ids ?? []) : null;
+      const localShown = splitByRelevance(message.local_policies, fold, lowIds).confident.length;
+      const nationalShown = splitByRelevance(message.national_policies, fold, lowIds).confident.length;
       return (
         <AiRow>
           <p className="muted">
@@ -63,7 +82,10 @@ export function MessageItem({ message, actions }: { message: Message; actions: M
               ` · ${message.analysis.intents.map((i) => INTENT_LABELS[i]).join(", ")}`}
           </p>
           {empty ? (
-            <p>조건에 맞는 정책 후보를 찾지 못했어요. 표현을 바꿔 다시 질문해 보세요.</p>
+            <>
+              <p>조건에 맞는 정책 후보를 찾지 못했어요. 표현을 바꿔 다시 질문해 보세요.</p>
+              <p className="muted">{EMPTY_RESULT_HINT}</p>
+            </>
           ) : (
             <>
               <CandidateGroup
@@ -71,14 +93,18 @@ export function MessageItem({ message, actions }: { message: Message; actions: M
                 policies={message.local_policies}
                 selectedPolicyId={actions.selectedPolicyId}
                 onSelect={actions.onSelectPolicy}
-                emptyText={message.national_policies.length > 0 ? EMPTY_LOCAL_BUT_NATIONAL_TEXT : undefined}
+                emptyText={nationalShown > 0 ? EMPTY_LOCAL_BUT_NATIONAL_TEXT : undefined}
+                foldLowRelevance={fold}
+                lowRelevanceIds={lowIds}
               />
               <CandidateGroup
                 title="중앙부처 정책"
                 policies={message.national_policies}
                 selectedPolicyId={actions.selectedPolicyId}
                 onSelect={actions.onSelectPolicy}
-                emptyText={message.local_policies.length > 0 ? EMPTY_NATIONAL_BUT_LOCAL_TEXT : undefined}
+                emptyText={localShown > 0 ? EMPTY_NATIONAL_BUT_LOCAL_TEXT : undefined}
+                foldLowRelevance={fold}
+                lowRelevanceIds={lowIds}
               />
             </>
           )}
