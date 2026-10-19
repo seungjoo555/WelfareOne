@@ -62,6 +62,22 @@ class RerankerServiceTest(unittest.TestCase):
         self.assertEqual(model.calls[0][0][1], ("월세가 부담돼요", "월세 지원"))
         self.assertEqual(model.calls[0][1]["batch_size"], 4)
 
+    def test_pool_size_depends_on_device_and_env_override(self):
+        from unittest import mock
+
+        from app.config import RERANKER_POOL_CPU, RERANKER_POOL_GPU
+
+        with mock.patch.dict("os.environ", {}, clear=False):
+            import os
+
+            os.environ.pop("RERANKER_POOL", None)
+            self.assertEqual(RerankerService(model=FakeCrossEncoder(), device="cpu").pool_per_scope, RERANKER_POOL_CPU)
+            self.assertEqual(RerankerService(model=FakeCrossEncoder(), device="cuda").pool_per_scope, RERANKER_POOL_GPU)
+        with mock.patch.dict("os.environ", {"RERANKER_POOL": "7"}):
+            self.assertEqual(RerankerService(model=FakeCrossEncoder(), device="cpu").pool_per_scope, 7)
+        with mock.patch.dict("os.environ", {"RERANKER_POOL": "abc"}):
+            self.assertEqual(RerankerService(model=FakeCrossEncoder(), device="cpu").pool_per_scope, RERANKER_POOL_CPU)
+
 
 if __name__ == "__main__":
     unittest.main()

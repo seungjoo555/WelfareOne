@@ -66,6 +66,18 @@ class RerankerPipelineTest(unittest.TestCase):
         self.assertTrue(all(p.policy_id.startswith("national:") for p in outcome.national_policies))
         self.assertFalse(outcome.relevance_checked)
 
+    def test_pool_size_follows_reranker_but_not_below_judge_pool(self):
+        small = ReverseReranker()
+        small.pool_per_scope = 5
+        search = FakeSearch(local=3)
+        run_search(analysis(), search, REGION, 24, "q", reranker=small)
+        self.assertEqual(search.calls[0]["local_top_k"], POOL_PER_SCOPE)
+        large = ReverseReranker()
+        large.pool_per_scope = 40
+        search = FakeSearch(local=3)
+        run_search(analysis(), search, REGION, 24, "q", reranker=large)
+        self.assertEqual(search.calls[0]["local_top_k"], 40)
+
     def test_scopes_are_not_mixed(self):
         outcome = run_search(analysis(), FakeSearch(local=2, national=2), REGION, 24, "q", reranker=ReverseReranker())
         self.assertTrue(all(p.metadata["source"] == "local" for p in outcome.local_policies))

@@ -106,7 +106,9 @@ def run_search(
     use_judge = judge is not None and situation
     # 판정할 때는 후보를 넉넉히(범위별 POOL_PER_SCOPE개) 뽑는다
     use_reranker = reranker is not None and situation
-    pool_size = RERANK_POOL_PER_SCOPE if use_reranker else POOL_PER_SCOPE
+    # 리랭커가 장치에 맞춰 정한 풀 크기를 쓴다(없으면 기본값). 판정기에 넘길 개수(POOL_PER_SCOPE)보다 작아지지 않게 한다.
+    reranker_pool = getattr(reranker, "pool_per_scope", RERANK_POOL_PER_SCOPE) if use_reranker else 0
+    pool_size = max(reranker_pool, POOL_PER_SCOPE) if use_reranker else POOL_PER_SCOPE
     pool_options = {"local_top_k": pool_size, "national_top_k": pool_size} if (use_judge or use_reranker) else {}
     queries = search_queries(analysis, question)
     kwargs: dict[str, Any] = {

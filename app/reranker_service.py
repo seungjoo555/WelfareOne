@@ -10,7 +10,15 @@ from typing import Any
 import torch
 from sentence_transformers import CrossEncoder
 
-from .config import RERANKER_BATCH_SIZE, RERANKER_MAX_LENGTH, RERANKER_MODEL
+import os
+
+from .config import (
+    RERANKER_BATCH_SIZE,
+    RERANKER_MAX_LENGTH,
+    RERANKER_MODEL,
+    RERANKER_POOL_CPU,
+    RERANKER_POOL_GPU,
+)
 from .models import PolicyCandidate
 
 
@@ -62,6 +70,12 @@ class RerankerService:
     ) -> None:
         self.batch_size = batch_size
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        # 범위(지자체/중앙)별로 재정렬할 후보 수. 검색 파이프라인이 이 값만큼 후보를 가져온다.
+        override = os.getenv("RERANKER_POOL", "").strip()
+        self.pool_per_scope = (
+            int(override) if override.isdigit() and int(override) > 0
+            else RERANKER_POOL_GPU if self.device.startswith("cuda") else RERANKER_POOL_CPU
+        )
         self.model = model or CrossEncoder(
             model_name,
             device=self.device,
