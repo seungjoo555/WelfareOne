@@ -1,8 +1,8 @@
 import unittest
 from unittest import mock
 
-from google.genai import errors
-
+from fake_llm import FakeLLM
+from app.llm_client import LLMError
 from app.models import PolicyCandidate, PolicySearchResult
 from app.relevance_judge import (
     JUDGE_SEED,
@@ -23,26 +23,7 @@ def candidate(policy_id: str, title: str = "", summary: str = "요약") -> Polic
     )
 
 
-class FakeModels:
-    def __init__(self, responses):
-        self.responses = list(responses)  # 호출마다 하나씩 꺼낸다. 예외 객체면 던진다.
-        self.calls = []
-
-    def generate_content(self, model, contents, config):
-        self.calls.append((model, contents, config))
-        item = self.responses.pop(0)
-        if isinstance(item, Exception):
-            raise item
-
-        class Response:
-            parsed = item
-
-        return Response()
-
-
-class FakeClient:
-    def __init__(self, responses):
-        self.models = FakeModels(responses)
+FakeClient = FakeLLM
 
 
 def verdicts(*flags):
@@ -55,14 +36,14 @@ class RelevanceJudgeTest(unittest.TestCase):
         judge = RelevanceJudge(client, model="m")
         result = judge.judge("배고파", "무료 급식 식사 지원", [candidate("a", "급식소"), candidate("b", "교통비")], age=28)
         self.assertEqual(result, {"a": True, "b": False})
-        model, prompt, config = client.models.calls[0]
-        self.assertEqual(model, "m")
+        call = client.calls[0]
+        prompt = call["prompt"]
+        self.assertEqual(call["model"], "m")
         for text in ("배고파", "무료 급식 식사 지원", "0. 급식소", "1. 교통비", "28세"):
             self.assertIn(text, prompt)
-        self.assertEqual(config.seed, JUDGE_SEED)
-        self.assertEqual(config.temperature, 0)
-        self.assertEqual(config.system_instruction, SYSTEM_INSTRUCTION)
-        self.assertEqual(config.http_options.timeout, 10_000)
+        self.assertEqual(call["seed"], JUDGE_SEED)
+        self.assertEqual(call["system"], SYSTEM_INSTRUCTION)
+        self.assertEqual(call["timeout_ms"], 10_000)
 
     def test_prompt_omits_age_and_duplicate_query_when_not_given(self):
         prompt = build_prompt("월세", "월세", [candidate("a", "정책", "줄바꿈\n있는   요약")], age=None)
@@ -77,7 +58,7 @@ class RelevanceJudgeTest(unittest.TestCase):
     def test_no_candidates_means_no_call(self):
         client = FakeClient([])
         self.assertEqual(RelevanceJudge(client).judge("q", "q", []), {})
-        self.assertEqual(client.models.calls, [])
+        self.assertEqual(client.calls, [])
 
     def test_missing_verdicts_raise(self):
         judge = RelevanceJudge(FakeClient([_Verdicts(items=[_Verdict(id=0, relevant=True)])]))
@@ -93,24 +74,24 @@ class RelevanceJudgeTest(unittest.TestCase):
             RelevanceJudge(FakeClient([unknown])).judge("q", "q", [candidate("a"), candidate("b")])
 
     def test_rate_limit_is_not_retried(self):
-        client = FakeClient([errors.APIError(429, {"error": {"message": "quota"}})])
+        client = FakeClient([LLMError("quota", 429)])
         with self.assertRaises(RelevanceJudgeError):
             RelevanceJudge(client).judge("q", "q", [candidate("a")])
-        self.assertEqual(len(client.models.calls), 1)
+        self.assertEqual(len(client.calls), 1)
 
     def test_server_error_is_retried_once(self):
-        client = FakeClient([errors.APIError(503, {"error": {"message": "x"}}), verdicts(True)])
+        client = FakeClient([LLMError("x", 503), verdicts(True)])
         with mock.patch("app.relevance_judge.time.sleep") as sleep:
             result = RelevanceJudge(client).judge("q", "q", [candidate("a")])
         self.assertEqual(result, {"a": True})
-        self.assertEqual(len(client.models.calls), 2)
+        self.assertEqual(len(client.calls), 2)
         sleep.assert_called_once()
 
     def test_persistent_server_error_gives_up_after_two_attempts(self):
-        client = FakeClient([errors.APIError(500, {"error": {"message": "x"}}), errors.APIError(500, {"error": {"message": "x"}})])
+        client = FakeClient([LLMError("x", 500), LLMError("x", 500)])
         with mock.patch("app.relevance_judge.time.sleep"), self.assertRaises(RelevanceJudgeError):
             RelevanceJudge(client).judge("q", "q", [candidate("a")])
-        self.assertEqual(len(client.models.calls), 2)
+        self.assertEqual(len(client.calls), 2)
 
     def test_unexpected_error_becomes_judge_error(self):
         with self.assertRaises(RelevanceJudgeError):

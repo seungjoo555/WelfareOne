@@ -7,6 +7,8 @@ from typing import Callable, TypeVar
 
 from google.genai import errors
 
+from .llm_client import LLMError
+
 T = TypeVar("T")
 
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
@@ -22,7 +24,7 @@ def call_with_retry(action: Callable[[], T], max_retries: int) -> T:
     for attempt in range(attempts):
         try:
             return action()
-        except errors.APIError as exc:
+        except (LLMError, errors.APIError) as exc:
             if getattr(exc, "code", None) not in RETRYABLE_STATUS or attempt == attempts - 1:
                 raise
             time.sleep(2**attempt)

@@ -1,5 +1,7 @@
 import unittest
 
+from fake_llm import FakeLLM
+
 from app.question_analyzer import (
     ANALYZER_SEED,
     SYSTEM_INSTRUCTION,
@@ -8,28 +10,18 @@ from app.question_analyzer import (
 )
 
 
-class _FakeModels:
-    def __init__(self):
-        self.configs = []
-
-    def generate_content(self, model, contents, config):
-        self.configs.append(config)
-
-        class Response:
-            parsed = _GeminiAnalysis(
+def _fake_client():
+    return FakeLLM(
+        [
+            _GeminiAnalysis(
                 route="situation_search",
                 search_query="무료 급식 식사 지원",
                 intent="policy_search",
                 intents=["policy_search"],
                 confidence=0.9,
             )
-
-        return Response()
-
-
-class _FakeClient:
-    def __init__(self):
-        self.models = _FakeModels()
+        ]
+    )
 
 
 class QuestionAnalyzerRequestTest(unittest.TestCase):
@@ -37,20 +29,20 @@ class QuestionAnalyzerRequestTest(unittest.TestCase):
 
     def make(self, **kwargs):
         analyzer = QuestionAnalyzer(api_key="x" * 24, **kwargs)
-        analyzer.client = _FakeClient()
+        analyzer.client = _fake_client()
         return analyzer
 
     def test_seed_is_fixed_by_default_to_keep_results_stable(self):
         analyzer = self.make()
         analyzer.analyze_question("배고파")
-        config = analyzer.client.models.configs[0]
-        self.assertEqual(config.seed, ANALYZER_SEED)
-        self.assertEqual(config.temperature, 0)
+        call = analyzer.client.calls[0]
+        self.assertEqual(call["seed"], ANALYZER_SEED)
+        self.assertEqual(call["system"], SYSTEM_INSTRUCTION)
 
     def test_seed_can_be_disabled(self):
         analyzer = self.make(seed=None)
         analyzer.analyze_question("배고파")
-        self.assertIsNone(analyzer.client.models.configs[0].seed)
+        self.assertIsNone(analyzer.client.calls[0]["seed"])
 
     def test_instruction_tells_model_to_translate_colloquial_needs(self):
         # 구어체 질문("배고파")이 그대로 검색어가 되어 결과가 비는 문제를 막는 지침이 빠지지 않았는지 확인한다.

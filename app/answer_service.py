@@ -5,13 +5,12 @@ from __future__ import annotations
 import os
 import re
 
-from google import genai
-from google.genai import types
 from pydantic import BaseModel, Field, field_validator
 
 from .config import GEMINI_MODEL, PROJECT_DIR
 from .env import load_env_file
 from .gemini_retry import call_with_retry
+from .llm_client import GeminiClient, LLMClient
 from .models import AnswerResult, PolicyResource, PolicySection
 
 
@@ -224,14 +223,17 @@ class AnswerService:
         api_key: str | None = None,
         model: str = GEMINI_MODEL,
         max_retries: int = 3,
+        client: LLMClient | None = None,
     ) -> None:
-        load_env_file(PROJECT_DIR / ".env")
-        resolved_key = api_key or os.getenv("GEMINI_API_KEY")
-        if not resolved_key:
-            raise AnswerGenerationError(
-                "GEMINI_API_KEY가 없습니다. 프로젝트의 .env 파일을 확인해주세요."
-            )
-        self.client = genai.Client(api_key=resolved_key)
+        if client is None:
+            load_env_file(PROJECT_DIR / ".env")
+            resolved_key = api_key or os.getenv("GEMINI_API_KEY")
+            if not resolved_key:
+                raise AnswerGenerationError(
+                    "GEMINI_API_KEY가 없습니다. 프로젝트의 .env 파일을 확인해주세요."
+                )
+            client = GeminiClient(resolved_key, model)
+        self.client = client
         self.model = model
         self.max_retries = max(1, max_retries)
 
@@ -261,25 +263,12 @@ class AnswerService:
 
         contents = _build_contents(question, policy_id, policy_title, selected, intents)
         def call() -> _GeminiAnswer:
-            response = self.client.models.generate_content(
+            return self.client.generate_json(
+                system=SYSTEM_INSTRUCTION,
+                prompt=contents,
+                schema=_GeminiAnswer,
                 model=self.model,
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_INSTRUCTION,
-                    temperature=0,
-                    response_mime_type="application/json",
-                    response_schema=_GeminiAnswer,
-                    automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                        disable=True,
-                    ),
-                ),
             )
-            parsed = response.parsed
-            if parsed is None:
-                return _GeminiAnswer.model_validate_json(response.text)
-            if not isinstance(parsed, _GeminiAnswer):
-                return _GeminiAnswer.model_validate(parsed)
-            return parsed
 
         try:
             parsed = call_with_retry(call, self.max_retries)

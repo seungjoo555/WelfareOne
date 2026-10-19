@@ -5,13 +5,12 @@ from __future__ import annotations
 import os
 from typing import Literal
 
-from google import genai
-from google.genai import types
 from pydantic import BaseModel, Field, field_validator
 
 from .config import GEMINI_MODEL, PROJECT_DIR
 from .env import load_env_file
 from .gemini_retry import call_with_retry
+from .llm_client import GeminiClient, LLMClient
 from .models import QuestionAnalysis
 
 
@@ -147,16 +146,19 @@ class QuestionAnalyzer:
         model: str = GEMINI_MODEL,
         max_retries: int = 3,
         seed: int | None = ANALYZER_SEED,
+        client: LLMClient | None = None,
     ) -> None:
         self.seed = seed
-        load_env_file(PROJECT_DIR / ".env")
-        resolved_key = api_key or os.getenv("GEMINI_API_KEY")
-        if not resolved_key:
-            raise QuestionAnalysisError(
-                "GEMINI_API_KEY가 없습니다. 프로젝트의 .env 파일에 "
-                "GEMINI_API_KEY=발급받은키 형식으로 입력해주세요."
-            )
-        self.client = genai.Client(api_key=resolved_key)
+        if client is None:
+            load_env_file(PROJECT_DIR / ".env")
+            resolved_key = api_key or os.getenv("GEMINI_API_KEY")
+            if not resolved_key:
+                raise QuestionAnalysisError(
+                    "GEMINI_API_KEY가 없습니다. 프로젝트의 .env 파일에 "
+                    "GEMINI_API_KEY=발급받은키 형식으로 입력해주세요."
+                )
+            client = GeminiClient(resolved_key, model)
+        self.client = client
         self.model = model
         self.max_retries = max(1, max_retries)
 
@@ -177,26 +179,13 @@ class QuestionAnalyzer:
         )
 
         def call() -> _GeminiAnalysis:
-            response = self.client.models.generate_content(
+            return self.client.generate_json(
+                system=SYSTEM_INSTRUCTION,
+                prompt=context,
+                schema=_GeminiAnalysis,
                 model=self.model,
-                contents=context,
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_INSTRUCTION,
-                    temperature=0,
-                    seed=self.seed,
-                    response_mime_type="application/json",
-                    response_schema=_GeminiAnalysis,
-                    automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                        disable=True,
-                    ),
-                ),
+                seed=self.seed,
             )
-            parsed = response.parsed
-            if parsed is None:
-                return _GeminiAnalysis.model_validate_json(response.text)
-            if not isinstance(parsed, _GeminiAnalysis):
-                return _GeminiAnalysis.model_validate(parsed)
-            return parsed
 
         try:
             parsed = call_with_retry(call, self.max_retries)

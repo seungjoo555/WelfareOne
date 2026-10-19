@@ -15,10 +15,10 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from google.genai import errors, types
 from pydantic import BaseModel
 
 from .config import GEMINI_MODEL
+from .llm_client import LLMClient, LLMError
 from .models import PolicyCandidate, PolicySearchResult
 
 # 판정에 보낼 후보 수(범위별)와, 판정 뒤 화면에 올릴 개수
@@ -77,7 +77,7 @@ def build_prompt(question: str, search_query: str, candidates: list[PolicyCandid
 class RelevanceJudge:
     def __init__(
         self,
-        client: Any,
+        client: LLMClient,
         model: str = GEMINI_MODEL,
         seed: int | None = JUDGE_SEED,
         timeout_ms: int = JUDGE_TIMEOUT_MS,
@@ -101,28 +101,18 @@ class RelevanceJudge:
         last_error: Exception | None = None
         for attempt in range(2):
             try:
-                response = self.client.models.generate_content(
+                parsed = self.client.generate_json(
+                    system=SYSTEM_INSTRUCTION,
+                    prompt=prompt,
+                    schema=_Verdicts,
                     model=self.model,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        system_instruction=SYSTEM_INSTRUCTION,
-                        temperature=0,
-                        seed=self.seed,
-                        response_mime_type="application/json",
-                        response_schema=_Verdicts,
-                        http_options=types.HttpOptions(timeout=self.timeout_ms),
-                        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
-                    ),
+                    seed=self.seed,
+                    timeout_ms=self.timeout_ms,
                 )
-                parsed = response.parsed
-                if parsed is None:
-                    parsed = _Verdicts.model_validate_json(response.text)
-                elif not isinstance(parsed, _Verdicts):
-                    parsed = _Verdicts.model_validate(parsed)
                 return self._to_map(parsed, candidates)
             except RelevanceJudgeError:
                 raise
-            except errors.APIError as exc:
+            except LLMError as exc:
                 last_error = exc
                 # 한도 초과(429)는 기다려도 곧 풀리지 않으므로 다시 시도하지 않고 바로 대신한다
                 if getattr(exc, "code", None) not in _RETRYABLE or attempt == 1:

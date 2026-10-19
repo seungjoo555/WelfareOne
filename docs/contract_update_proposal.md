@@ -165,15 +165,32 @@ QWEN_MODEL=...
 
 API 키·주소는 코드에 쓰지 않는다. `LLM_PROVIDER`를 설정하지 않으면 현재 동작이 그대로다.
 
-### 8-6. 합의가 필요한 항목
+### 8-6. 합의가 필요한 항목과 대안
 
-1. Qwen을 어떻게 띄울지(vLLM / Ollama / 직접 로드)와 서버 위치. 이 결정으로 `QWEN_BASE_URL` 방식의 세부가 정해진다.
-2. 구조화 출력 방식. Gemini는 스키마를 강제하지만 Qwen은 서버 설정에 따라 다르다. 검증 실패 시 재시도 횟수.
-3. 기본 공급자를 Qwen으로 올리는 조건. 평가셋(`welfareone_rag_eval_280.csv`)에서 질문 분석 정확도(route·intents), 관련도 판정 일치율, 답변 근거 포함률이 Gemini 대비 어느 수준이면 기본으로 쓸지.
-4. `GET /config` 응답 필드명(`server_llm`, `server_llm_provider`, `user_key_provider`) 확정.
+**1. Qwen 실행 방식·위치** — 이 PC(RTX A4000 16GB, 리랭커·임베딩이 약 3GB 사용)에는 LM Studio가 있고, 설치된 `Qwen3-Embedding-8B`는 임베딩 전용이라 텍스트 생성에 쓸 수 없다. 생성용 Qwen3 instruct 계열(4B/8B, Q4_K_M)을 추가로 받아야 한다.
+
+| 안 | 방식 | 장점 | 단점 |
+|---|---|---|---|
+| A (추천 시작점) | 이 PC의 LM Studio/Ollama (OpenAI 호환 서버) | 설치가 쉽고 JSON 스키마 출력 지원 | 동시 요청 처리량이 낮고 PC가 켜져 있어야 함 |
+| B | vLLM (WSL2/Docker) | 구조화 출력·처리량 최고 | Windows 네이티브 불가, 설정 번거로움 |
+| C | 팀 공용/클라우드 GPU 서버의 vLLM | 모두 같은 엔드포인트 | 비용·운영·접근 제어 |
+| D | 호스티드 Qwen API | 서버 불필요 | 질문이 외부로 전송됨, 키·비용 관리 |
+| E | 서버 프로세스 안에서 `transformers` 직접 로드 | 구성요소 하나 | 동시 요청·메모리·속도 문제 (비추천) |
+
+모두 OpenAI 호환 주소(`QWEN_BASE_URL`)로 붙으므로 A로 시작하고 B/C로 옮겨도 코드는 바뀌지 않는다.
+
+**2. 구조화 출력·재시도** — 결정: **서버 제약 디코딩**(JSON 스키마를 요청에 실어 보냄: LM Studio/Ollama `response_format`·`format`, vLLM `guided_json`)을 기본으로 한다. 대안(JSON 모드 + 검증 재시도, 프롬프트만으로 요청, 함수 호출)은 호환성 확인용 보조로만 둔다. 의미 검증(route·intents 허용값 등)은 지금처럼 코드가 공급자와 무관하게 수행한다.
+
+- 네트워크·서버 오류(429, 5xx): 기존과 같이 최대 3회(1초, 2초 대기)
+- 검증 실패(스키마·허용값 위반): 오류 내용을 알려 주고 `temperature`를 낮춰 **1회** 재시도, 그래도 실패하면 `LLM_RESPONSE_INVALID`
+- 단계별 실패 정책: 질문 분석 실패 → 오류, 관련도 판정 실패 → 거리·리랭커 순 폴백(오류 아님), 답변 실패 → 오류
+
+**3. 기본 공급자를 Qwen으로 올리는 조건** — 평가셋(`welfareone_rag_eval_280.csv`)에서 질문 분석 정확도(route·intents), 관련도 판정 일치율, 답변 근거 포함률이 Gemini 대비 어느 수준이면 기본으로 쓸지. 기준에 못 미치면 선택 옵션으로만 둔다.
+
+**4. `GET /config` 응답 필드명** (`server_llm`, `server_llm_provider`, `user_key_provider`) 확정.
 
 ### 8-7. 반영 순서
 
 1. 8-1·8-3·8-6을 팀이 먼저 합의한다(동작이 바뀌는 항목).
 2. 합의 후 `function_contracts.md` 17장 표(`GET /config`)와 18장 표(`app/llm_client.py`)에 반영하고, 17장 오류 코드 설명에 8-2를 반영한다.
-3. 코드는 (a) 동작 변경 없는 `LLMClient` 도입 → (b) Qwen 구현 → (c) 선택 로직과 `/config` → (d) 프론트 순서로 나눠 진행한다. (a)는 기존 테스트가 그대로 통과해야 한다.
+3. 코드는 (a) 동작 변경 없는 `LLMClient` 도입(**완료**, 2026-10-19) → (b) Qwen 구현 → (c) 선택 로직과 `/config` → (d) 프론트 순서로 나눠 진행한다. (a)는 기존 테스트가 그대로 통과해야 한다.
