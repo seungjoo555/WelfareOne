@@ -68,6 +68,27 @@ class QuestionAnalyzerMappingTest(unittest.TestCase):
         self.assertEqual(result.requested_sections, ["documents", "application"])
         self.assertEqual(result.include_keywords, ["월세", "임대차계약서"])
 
+    def test_specific_policy_without_a_policy_name_becomes_situation_search(self):
+        parsed = _GeminiAnalysis(
+            route="specific_policy", policy_name=None, search_query="자격증 취득 지원",
+            intent="policy_search", intents=["policy_search"], confidence=0.8,
+        )
+        self.assertEqual(QuestionAnalyzer._to_result(parsed, current_policy_id=None).route, "situation_search")
+        blank = parsed.model_copy(update={"policy_name": "  "})
+        self.assertEqual(QuestionAnalyzer._to_result(blank, current_policy_id=None).route, "situation_search")
+        named = parsed.model_copy(update={"policy_name": "청년 월세 지원"})
+        self.assertEqual(QuestionAnalyzer._to_result(named, current_policy_id=None).route, "specific_policy")
+
+    def test_request_words_are_not_kept_as_keywords(self):
+        parsed = _GeminiAnalysis(
+            route="situation_search", policy_name=None, search_query="자격증 취득 지원",
+            intent="policy_search", intents=["policy_search"], confidence=0.8,
+            include_keywords=["자격증", "추천"], exclude_keywords=["알려줘", "정책", "대출"],
+        )
+        result = QuestionAnalyzer._to_result(parsed, current_policy_id=None)
+        self.assertEqual(result.include_keywords, ["자격증"])
+        self.assertEqual(result.exclude_keywords, ["대출"])
+
     def test_followup_without_selected_policy_is_corrected(self):
         parsed = _GeminiAnalysis(
             route="current_policy_question",

@@ -66,6 +66,8 @@ class Services:
     relevance_judge_factory: Callable[[Any], Any] | None = None
     # RerankerService. 상황형 질문의 후보 풀을 재정렬한다. None이면 쓰지 않는다(모델 로딩 실패 시도 포함).
     reranker: Any | None = None
+    # 서버 기본 LLM 공급자 이름("qwen" 등). None이고 analyzer가 있으면 서버 키 폴백(gemini)이다. GET /config가 보여 준다.
+    server_llm_provider: str | None = None
 
 
 def _warm_up(search: Any, reranker: Any | None) -> None:
@@ -86,6 +88,7 @@ def build_services() -> Services:
     from .answer_service import AnswerService
     from .config import PROJECT_DIR
     from .env import load_env_file
+    from .llm_client import server_qwen_from_env
     from .question_analyzer import QuestionAnalyzer
     from .relevance_judge import RelevanceJudge
     from .repository import PolicyRepository
@@ -94,6 +97,18 @@ def build_services() -> Services:
     load_env_file(PROJECT_DIR / ".env")  # 서버 키 폴백 플래그도 .env에서 읽을 수 있게 한다
     allow_server_key = os.getenv(ALLOW_SERVER_KEY_ENV, "").strip().lower() in {"1", "true", "yes"}
     rerank_enabled = os.getenv(LLM_RERANK_ENV, "1").strip().lower() not in {"0", "false", "no", "off"}
+
+    # 공급자 우선순위(계약서 제안 8-1): 사용자 키 > 서버 기본 공급자(LLM_PROVIDER) > 서버 키 폴백 > API_KEY_REQUIRED.
+    # 사용자 키 경로는 아래 *_factory가 항상 Gemini로 만들므로 서버 기본 공급자와 섞이지 않는다.
+    server_llm = server_qwen_from_env()
+    if server_llm is not None:
+        analyzer = QuestionAnalyzer(client=server_llm, model=server_llm.model)
+        answers = AnswerService(client=server_llm, model=server_llm.model)
+        provider = "qwen"
+    elif allow_server_key:
+        analyzer, answers, provider = QuestionAnalyzer(), AnswerService(), "gemini"  # GEMINI_API_KEY가 없으면 여기서 실패
+    else:
+        analyzer, answers, provider = None, None, None
 
     reranker = None
     if os.getenv(RERANKER_ENV, "1").strip().lower() not in {"0", "false", "no", "off"}:
@@ -111,9 +126,9 @@ def build_services() -> Services:
         reranker=reranker,
         repository=repository,
         search=search,
-        # 폴백을 켠 경우에만 서버 키로 만든다(이때 GEMINI_API_KEY가 없으면 여기서 바로 실패한다).
-        analyzer=QuestionAnalyzer() if allow_server_key else None,
-        answers=AnswerService() if allow_server_key else None,
+        analyzer=analyzer,
+        answers=answers,
+        server_llm_provider=provider,
         regions=repository.list_regions(),
         analyzer_factory=lambda key: QuestionAnalyzer(api_key=key),
         answers_factory=lambda key: AnswerService(api_key=key),
@@ -250,6 +265,14 @@ def create_app(services: Services | None = None) -> FastAPI:
     def health() -> dict[str, str]:
         # 모델·DB 로딩은 lifespan에서 끝나야 요청을 받기 시작하므로, 응답이 오면 준비가 끝난 것이다.
         return {"status": "ok"}
+
+    @app.get("/config")
+    def public_config(request: Request) -> dict[str, Any]:
+        """프론트가 "본인 키 입력을 필수로 받을지, 선택으로 둘지" 정하는 용도(계약서 제안 8-3). 민감 정보는 없다."""
+        services = svc(request)
+        available = services.analyzer is not None and services.answers is not None
+        provider = (services.server_llm_provider or "gemini") if available else None
+        return {"server_llm": available, "server_llm_provider": provider, "user_key_provider": "gemini"}
 
     @app.get("/regions")
     def list_regions(request: Request) -> dict[str, list[str]]:

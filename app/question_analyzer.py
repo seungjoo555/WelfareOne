@@ -128,11 +128,15 @@ SYSTEM_INSTRUCTION = """
 """.strip()
 
 
+# 요청·군더더기 표현은 검색 키워드가 아니다. 모델이 지침을 어기고 넣어도 코드에서 걸러 점수 보정에 쓰이지 않게 한다.
+_REQUEST_WORDS = {"알려줘", "알려주세요", "추천", "추천해줘", "추천해주세요", "정책", "관련", "문의"}
+
+
 def _clean_words(values: list[str]) -> list[str]:
     result: list[str] = []
     for value in values:
         word = value.strip()
-        if word and word not in result:
+        if word and word not in result and word not in _REQUEST_WORDS:
             result.append(word)
     return result[:8]
 
@@ -205,6 +209,9 @@ class QuestionAnalyzer:
         # 현재 정책이 없는데 후속 질문으로 잘못 분류한 결과는 코드에서 보정한다.
         if route == "current_policy_question" and not current_policy_id:
             route = "specific_policy" if parsed.policy_name else "situation_search"
+        # 정책명이 없는데 정책명을 말했다고 분류한 결과도 보정한다(공급자와 무관하게 같은 규칙, 계약서 8장 규칙 5).
+        if route == "specific_policy" and not (parsed.policy_name and parsed.policy_name.strip()):
+            route = "situation_search"
 
         intents = _normalize_intents(parsed.intent, parsed.intents, question)
         intent = intents[0]

@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 from typing import Protocol, TypeVar
 
 import httpx
@@ -169,3 +171,36 @@ class QwenClient:
             raise LLMError(f"Qwen 서버에 연결하지 못했습니다: {type(exc).__name__}", 503) from exc
         except (KeyError, IndexError, ValueError, httpx.HTTPError) as exc:
             raise LLMError(f"Qwen 서버 응답 형식이 올바르지 않습니다: {type(exc).__name__}") from exc
+
+
+LLM_PROVIDER_ENV = "LLM_PROVIDER"
+
+
+def server_qwen_from_env() -> QwenClient | None:
+    """`LLM_PROVIDER=qwen`이면 환경변수로 서버 기본 LLM(QwenClient)을 만든다. 설정하지 않았으면 None.
+
+    QWEN_BASE_URL(기본 LM Studio 주소), QWEN_MODEL(필수), QWEN_API_KEY, QWEN_TIMEOUT_S, QWEN_EXTRA_BODY(JSON, 선택).
+    설정이 잘못되면 서버가 뜰 때 바로 알 수 있도록 ValueError를 던진다.
+    """
+    provider = os.getenv(LLM_PROVIDER_ENV, "").strip().lower()
+    if not provider:
+        return None
+    if provider != "qwen":
+        raise ValueError(f"{LLM_PROVIDER_ENV}={provider!r}는 지원하지 않습니다. 비우거나 qwen으로 설정하세요.")
+    model = os.getenv("QWEN_MODEL", "").strip()
+    if not model:
+        raise ValueError("LLM_PROVIDER=qwen이면 QWEN_MODEL(서버에 로드한 모델 이름)이 필요합니다.")
+    extra_raw = os.getenv("QWEN_EXTRA_BODY", "").strip()
+    try:
+        extra_body = json.loads(extra_raw) if extra_raw else None
+    except json.JSONDecodeError as exc:
+        raise ValueError("QWEN_EXTRA_BODY는 JSON 객체여야 합니다.") from exc
+    if extra_body is not None and not isinstance(extra_body, dict):
+        raise ValueError("QWEN_EXTRA_BODY는 JSON 객체여야 합니다.")
+    return QwenClient(
+        base_url=os.getenv("QWEN_BASE_URL", "").strip() or "http://localhost:1234/v1",
+        model=model,
+        api_key=os.getenv("QWEN_API_KEY", "").strip() or None,
+        timeout_s=float(os.getenv("QWEN_TIMEOUT_S", "").strip() or 60),
+        extra_body=extra_body,
+    )
