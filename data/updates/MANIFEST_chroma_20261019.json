@@ -1,0 +1,78 @@
+{
+  "name": "chroma_update_20261019",
+  "created": "2026-10-19",
+  "collection": "welfare_policy_sections_qwen_v3",
+  "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+  "distance": "cosine",
+  "records": {
+    "before": 11850,
+    "after": 11882
+  },
+  "policies": {
+    "before": 1418,
+    "after": 1422
+  },
+  "base": "기존 data/chroma(2026-09-21 수집분 기준) 복사본에서 아래 정책만 교체·추가",
+  "changed_policies": {
+    "local": {
+      "added": [
+        "WLF00006795",
+        "WLF00006794",
+        "WLF00006786",
+        "WLF00006781"
+      ],
+      "updated": [
+        "WLF00004241",
+        "WLF00002629",
+        "WLF00003485",
+        "WLF00000453",
+        "WLF00003383",
+        "WLF00006181",
+        "WLF00001707",
+        "WLF00003378"
+      ],
+      "removed_from_list_kept": [
+        "WLF00004006"
+      ]
+    },
+    "national": {
+      "added": [],
+      "updated": [
+        "WLF00000026",
+        "WLF00000781",
+        "WLF00006265",
+        "WLF00006315"
+      ],
+      "removed_from_list_kept": [
+        "WLF00006212",
+        "WLF00006251",
+        "WLF00006294",
+        "WLF00006298",
+        "WLF00006308",
+        "WLF00006309",
+        "WLF00006310",
+        "WLF00006311",
+        "WLF00006314",
+        "WLF00006317",
+        "WLF00006324",
+        "WLF00006331",
+        "WLF00006333"
+      ]
+    }
+  },
+  "unchanged_policies_verified_identical": {
+    "policies": 1406,
+    "records": 11742
+  },
+  "built_with": "scripts/build_chroma_update.py (git 57957da, branch data/update-20261019)",
+  "schema": "기존과 동일(documents 섹션 유지, 메타데이터 키 변경 없음)",
+  "zip_sha256": "0f9626dc7231889e73cf7d78ebe11bc32778c9bd823623503c863b05593491fb",
+  "zip_file": "chroma_update_20261019.zip",
+  "how_to_apply": [
+    "1) 앱(uvicorn)을 끈다.",
+    "2) 기존 프로젝트의 data/chroma 폴더를 다른 이름으로 백업한다(예: data/chroma_before_20261019).",
+    "3) zip을 풀어 나온 chroma 폴더를 프로젝트의 data/ 아래에 넣어 data/chroma로 만든다.",
+    "4) python -m app.main 또는 uvicorn으로 실행해 정상 기동과 검색을 확인한다."
+  ],
+  "rollback": "백업한 data/chroma_before_20261019 폴더 이름을 data/chroma로 되돌린다."
+}
