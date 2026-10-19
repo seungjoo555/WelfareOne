@@ -93,3 +93,87 @@ INVALID_API_KEY    키 형식이 틀렸거나 Gemini가 거부한 경우(401/403
 - `POST /policies/{policy_id}/ask` 요청에 선택 필드 `intent` 추가. 허용값은 계약서 8장 intent 중 `eligibility`, `benefit`, `application`, `administrative`, `required_documents`, `contact`. 값이 있으면 질문 분석(Gemini)을 **건너뛰고** `route=current_policy_question`, `intents=[intent]`로 처리하며 `requested_sections`는 기존 규칙(`INTENT_SECTIONS`)으로 만든다. 값이 없으면 기존과 동일. 허용값 밖이면 422 `INVALID_REQUEST`.
 - `generate_answer(question, policy_id, contexts, requested_sections=None, policy_title=None, intents=None)`: 선택 인자 `intents` 추가. 질문 유형별로 사람들이 보통 알고 싶어 하는 항목 순서(예: 지원 대상 = 누가 대상인가 → 제외·우선 대상 → 신청 전 확인할 점)를 프롬프트에 안내해 답변을 소제목+불릿으로 구성한다. 직접 입력한 질문도 분석기가 정한 `intents`로 같은 구성을 쓴다. 원문에 없는 항목은 지어내지 않고 한 줄로 묶어 "확인되지 않습니다"로 안내한다.
 - 효과(실측, 1개 정책): 버튼 질문 응답 약 1.3~2.6초, 직접 입력(분석 약 1.4초 + 답변 약 1.8초 = 약 3.2초)보다 빠르다.
+
+## 8. LLM 공급자와 사용자 키 우선순위 (제안, 2026-10-19)
+
+상태: **제안**. 서버가 기본 LLM(예: 자체 호스팅 Qwen)을 제공하되, 지금처럼 사용자가 본인 Gemini 키를 넣어 쓰는 방식(BYOK)은 그대로 유지하기 위한 규칙이다. 기존 계약은 바꾸지 않고 **공급자 선택 규칙과 조회용 엔드포인트만 추가**한다.
+
+### 8-1. 공급자 선택 우선순위 (질문 분석·관련도 판정·답변 공통)
+
+| 순서 | 조건 | 사용하는 LLM |
+|---|---|---|
+| 1 | 요청에 `X-Gemini-Api-Key` 헤더가 있음 | **항상** 그 키의 Gemini (서버 설정과 무관) |
+| 2 | 헤더 없음 + 서버 기본 공급자(`LLM_PROVIDER`)가 설정되어 있음 | 서버 기본 공급자 (예: Qwen) |
+| 3 | 헤더 없음 + 기본 공급자 없음 + `WELFAREONE_ALLOW_SERVER_KEY=true` | 서버 `GEMINI_API_KEY`의 Gemini (기존 폴백) |
+| 4 | 위에 모두 해당 없음 | 401 `API_KEY_REQUIRED` |
+
+- 1번이 가장 높다. 사용자가 키를 보냈는데 서버 Qwen으로 처리하거나, 반대로 사용자 키가 Qwen으로 전달되는 일은 없어야 한다(테스트로 고정).
+- 형식이 틀린 키는 2~3번으로 넘어가지 않고 401 `INVALID_API_KEY`다(기존 동작 유지).
+- 한 요청 안에서 공급자를 섞지 않는다. 질문 분석, 관련도 판정, 답변은 같은 공급자를 쓴다.
+- 서버는 사용자 키를 저장·로깅하지 않고 요청 처리 중에만 사용한다(기존 규칙 유지).
+
+### 8-2. 오류 코드
+
+새 코드는 없다. 의미만 정리한다.
+
+```text
+API_KEY_REQUIRED    8-1의 4번: 사용자 키도, 서버 기본 공급자도, 서버 키 폴백도 없음
+INVALID_API_KEY     사용자 키 형식 오류 또는 Gemini가 거부(기존과 동일)
+LLM_RATE_LIMITED    공급자 무관하게 429(요청 한도 초과)
+LLM_RESPONSE_INVALID 공급자 무관하게 응답이 스키마·허용값 검증을 통과하지 못함
+```
+
+공급자별 예외는 서버 내부에서 공통 예외로 바꾼 뒤 위 코드로 변환한다. API 응답에는 공급자 이름이나 원본 오류 메시지를 싣지 않는다.
+
+### 8-3. 17장 FastAPI — `GET /config` 추가
+
+프론트가 "키 입력을 필수로 받을지, 선택으로 둘지" 정하기 위한 조회용 엔드포인트다. 인증·상태 없음, 민감 정보 없음.
+
+| Method | URL | 역할 | 응답 |
+|---|---|---|---|
+| GET | `/config` | 서버 LLM 사용 가능 여부 | 아래 참고 |
+
+```json
+{
+  "server_llm": true,
+  "server_llm_provider": "qwen",
+  "user_key_provider": "gemini"
+}
+```
+
+- `server_llm`: 헤더 없이도 요청을 처리할 수 있으면 `true`(8-1의 2번 또는 3번). 4번 상태면 `false`.
+- `server_llm_provider`: `"qwen"`, `"gemini"`, 없으면 `null`.
+- `user_key_provider`: 사용자가 헤더로 보낼 수 있는 키의 종류. 현재는 항상 `"gemini"`.
+- 프론트: `server_llm=true`이면 키 입력을 "선택 사항(본인 Gemini 키로 사용)"으로 안내하고, `false`이면 기존처럼 필수 입력이다. 이 요청이 실패하면 기존과 같이 필수 입력으로 동작한다.
+
+### 8-4. 18장 파일 역할 추가
+
+| 파일 | 역할 |
+|---|---|
+| `app/llm_client.py` | LLM 호출 공통 인터페이스(`generate_json`), Gemini·Qwen 구현, 공급자 공통 예외 |
+
+- `question_analyzer.py`, `answer_service.py`, `relevance_judge.py`는 `genai.Client`를 직접 만들지 않고 `LLMClient`를 주입받는다. 프롬프트와 출력 검증은 공급자와 무관하게 공통이다.
+- 기존 함수 시그니처(`analyze_question`, `generate_answer` 등)와 `QuestionAnalyzer(api_key=...)`, `AnswerService(api_key=...)` 호출 방식은 유지한다(호환).
+
+### 8-5. 환경변수 (`.env.example`에 추가)
+
+```text
+LLM_PROVIDER=qwen          # 서버 기본 공급자. 비우면 8-1의 3~4번 동작(현재와 동일)
+QWEN_BASE_URL=http://...   # OpenAI 호환 엔드포인트 (vLLM, Ollama 등)
+QWEN_MODEL=...
+```
+
+API 키·주소는 코드에 쓰지 않는다. `LLM_PROVIDER`를 설정하지 않으면 현재 동작이 그대로다.
+
+### 8-6. 합의가 필요한 항목
+
+1. Qwen을 어떻게 띄울지(vLLM / Ollama / 직접 로드)와 서버 위치. 이 결정으로 `QWEN_BASE_URL` 방식의 세부가 정해진다.
+2. 구조화 출력 방식. Gemini는 스키마를 강제하지만 Qwen은 서버 설정에 따라 다르다. 검증 실패 시 재시도 횟수.
+3. 기본 공급자를 Qwen으로 올리는 조건. 평가셋(`welfareone_rag_eval_280.csv`)에서 질문 분석 정확도(route·intents), 관련도 판정 일치율, 답변 근거 포함률이 Gemini 대비 어느 수준이면 기본으로 쓸지.
+4. `GET /config` 응답 필드명(`server_llm`, `server_llm_provider`, `user_key_provider`) 확정.
+
+### 8-7. 반영 순서
+
+1. 8-1·8-3·8-6을 팀이 먼저 합의한다(동작이 바뀌는 항목).
+2. 합의 후 `function_contracts.md` 17장 표(`GET /config`)와 18장 표(`app/llm_client.py`)에 반영하고, 17장 오류 코드 설명에 8-2를 반영한다.
+3. 코드는 (a) 동작 변경 없는 `LLMClient` 도입 → (b) Qwen 구현 → (c) 선택 로직과 `/config` → (d) 프론트 순서로 나눠 진행한다. (a)는 기존 테스트가 그대로 통과해야 한다.
