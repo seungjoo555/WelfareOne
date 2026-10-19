@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>WelfareOne 팀 공유 자료 (2026-10-19)</title>
+<style>
+  @page { size: A4; margin: 15mm 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Malgun Gothic", "맑은 고딕", sans-serif; font-size: 10pt; line-height: 1.6; color: #1f2933; margin: 0; }
+  h1 { font-size: 24pt; margin: 0 0 4px; color: #0b6b5f; }
+  h2 { font-size: 14pt; color: #0b6b5f; border-bottom: 2px solid #0b6b5f; padding-bottom: 3px; margin: 22px 0 8px; break-after: avoid; }
+  h3 { font-size: 11pt; margin: 14px 0 4px; color: #123; break-after: avoid; }
+  p { margin: 5px 0; }
+  ul, ol { margin: 4px 0; padding-left: 20px; }
+  li { margin: 2px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 9.2pt; }
+  tr { break-inside: avoid; }
+  th, td { border: 1px solid #cbd2d9; padding: 4px 7px; vertical-align: top; text-align: left; }
+  th { background: #e3f3f0; }
+  code { font-family: Consolas, monospace; background: #eef1f4; padding: 0 3px; border-radius: 3px; font-size: 8.8pt; }
+  pre { font-family: Consolas, monospace; background: #f3f5f7; border: 1px solid #cbd2d9; border-radius: 6px; padding: 7px 10px; font-size: 8.6pt; line-height: 1.5; break-inside: avoid; white-space: pre-wrap; }
+  .sub { color: #52606d; margin-bottom: 10px; }
+  .pb { break-before: page; }
+  .box { border-left: 4px solid #0b6b5f; background: #effaf8; padding: 6px 12px; margin: 8px 0; break-inside: avoid; }
+  .warn { border-left-color: #c2410c; background: #fff7ed; }
+  .tag { display: inline-block; padding: 0 6px; border-radius: 8px; font-size: 8.2pt; color: #fff; margin-right: 2px; white-space: nowrap; }
+  .ok { background: #0b6b5f; } .no { background: #c2410c; } .jh { background: #1d4ed8; } .jm { background: #7c3aed; } .new { background: #4b5563; }
+  .cover { text-align: center; padding-top: 70px; }
+  .cover h1 { font-size: 32pt; }
+  .cover .tagline { font-size: 14pt; color: #334; margin: 8px 0 30px; }
+  .toc { max-width: 430px; margin: 24px auto; text-align: left; font-size: 11pt; line-height: 1.9; }
+  .step { display: flex; gap: 8px; align-items: flex-start; border: 1px solid #cbd2d9; border-radius: 8px; padding: 5px 8px; margin: 0 0 12px; position: relative; break-inside: avoid; background: #fafcfc; }
+  .step:not(:last-child)::after { content: "▼"; position: absolute; left: 14px; bottom: -13px; font-size: 8pt; color: #0b6b5f; }
+  .step .n { flex: none; min-width: 22px; padding: 0 4px; height: 22px; border-radius: 50%; background: #0b6b5f; color: #fff; text-align: center; font-weight: bold; line-height: 22px; font-size: 9pt; }
+  .step .t { flex: 1; }
+  .step b { color: #0b6b5f; }
+  svg text { font-family: "Malgun Gothic", sans-serif; }
+</style>
+</head>
+<body>
+
+<!-- ================= 표지 ================= -->
+<div class="cover">
+  <h1>WelfareOne</h1>
+  <div class="tagline">팀 공유 자료 — 무엇이 달라졌고, 데이터는 어떻게 나눌까요</div>
+  <div class="sub">2026년 10월 19일 기준 · 브랜치 <code>feature/jimin-llm-provider</code></div>
+  <div class="toc">
+    1. 한눈에 보기<br>
+    2. 갱신 데이터 공유 방법 (가이드)<br>
+    3. main과 비교해 추가된 것과 기대효과<br>
+    4. 두 브랜치에서 무엇을 적용했나<br>
+    5. AI를 고르는 규칙 (Gemini / Qwen)<br>
+    6. 아직 정해야 할 것과 한계<br>
+    7. 쉬운 용어 풀이
+  </div>
+  <div class="sub">이 문서는 개발 지식이 없어도 읽을 수 있게 썼습니다. 코드 이름은 필요한 곳에만 작게 적었습니다.</div>
+</div>
+
+<!-- ================= 1. 한눈에 ================= -->
+<h2 class="pb">1. 한눈에 보기</h2>
+<p>WelfareOne은 청년이 "월세가 부담돼요"처럼 일상 말투로 물으면 알맞은 복지 정책을 찾아주고, 정책 원문에 근거해 답해주는 서비스입니다. 이번 정리는 <b>세 가지</b>입니다.</p>
+<table>
+  <tr><th style="width:26%">주제</th><th>쉬운 요약</th></tr>
+  <tr><td><b>① 검색·화면·답변이 좋아짐</b></td><td>main(기본 버전)보다 관련 없는 정책이 덜 나오고, 후보를 3개씩 넘겨 보고, 정책을 고른 뒤 버튼 한 번으로 질문할 수 있습니다. 서버를 켠 직후 첫 검색이 38초 걸리던 문제도 3.5초로 줄었습니다.</td></tr>
+  <tr><td><b>② 두 사람의 작업을 합침</b></td><td>지민님 브랜치(<code>jimin-search-ux</code>)를 바탕으로 두고, 종희님 브랜치(<code>jonghee-search-detail</code>)에서는 <b>리랭커(검색 결과 순서를 다시 매기는 도구)</b>만 가져왔습니다. 겹치는 기능은 중복을 피하려고 가져오지 않았습니다.</td></tr>
+  <tr><td><b>③ 데이터 갱신 도구가 생김</b></td><td>복지로에서 <b>새로 생기거나 바뀐 정책만</b> 골라 내려받는 프로그램을 만들었습니다. 아직 인증키가 없어 실제로 돌려보지는 않았습니다.</td></tr>
+</table>
+<div class="box"><b>숫자로 보면</b> — main 대비 커밋 28개, 파일 73개 변경. 자동 테스트는 백엔드 185개·프론트 39개가 모두 통과합니다(백엔드 5개는 환경 때문에 건너뛰는 항목).</div>
+
+<!-- ================= 2. 데이터 공유 ================= -->
+<h2 class="pb">2. 갱신 데이터 공유 방법 (가이드)</h2>
+<div class="box warn"><b>먼저 알아둘 점</b> — 이 가이드의 방식은 <b>제안</b>입니다. 아직 팀 합의 전이고, 데이터 수집 도구는 만들어 두었지만 <b>실제 수집은 실행하지 않았습니다</b>(복지로 인증키 필요).</div>
+
+<h3>2-1. 지금 데이터는 어디에 있나</h3>
+<table>
+  <tr><th style="width:24%">위치</th><th style="width:30%">내용</th><th>공유 방법</th></tr>
+  <tr><td><code>data/raw</code></td><td>복지로에서 받은 정책 원본 파일(XML) 약 1,437개. 마지막 수집은 9월 18~21일</td><td>크기가 작아 <b>Git(코드 저장소)으로 공유</b></td></tr>
+  <tr><td><code>data/processed</code></td><td>원본을 읽기 쉽게 바꾼 파일</td><td>Git</td></tr>
+  <tr><td><code>data/chroma</code></td><td>검색용 데이터베이스(정책 1,418개, 조각 11,850개). 용량이 커서 Git에 올리지 않음</td><td><b>압축 파일로 따로 공유</b>(지금처럼)</td></tr>
+</table>
+<p>검색 결과는 <code>data/chroma</code>에서 나옵니다. 즉 <b>원본(raw)만 새로 받아서는 검색에 나타나지 않고</b>, 검색용 데이터베이스에 다시 넣는 단계가 따로 필요합니다. 이 단계는 프로젝트 규칙상 <b>팀 합의 후에만</b> 합니다.</p>
+
+<h3>2-2. 갱신분을 따로 분류해서 추가하는 방식 (제안)</h3>
+<p>핵심 생각은 "<b>전체를 다시 올리지 말고, 이번에 바뀐 것만 날짜 이름을 붙여 추가한다</b>"입니다.</p>
+<div class="step"><div class="n">1</div><div class="t"><b>점검</b> — 목록만 받아서 새로 생긴 정책·수정된 정책이 몇 건인지 확인합니다. 아직 아무 파일도 바꾸지 않습니다.<pre>python scripts/update_welfare_incremental.py local</pre></div></div>
+<div class="step"><div class="n">2</div><div class="t"><b>반영</b> — 바뀐 정책의 상세 파일만 받아 <code>data/raw</code>에 넣습니다. 바뀌기 전 옛 파일은 <code>detail_prev/날짜/</code>에 보관합니다.<pre>python scripts/update_welfare_incremental.py local --apply</pre></div></div>
+<div class="step"><div class="n">3</div><div class="t"><b>보고서 확인</b> — <code>data/raw/local/update_reports/update_날짜.json</code>에 "추가된 ID, 수정된 ID, 실패, 목록에서 사라진 정책"이 정리됩니다.</div></div>
+<div class="step"><div class="n">4</div><div class="t"><b>Git 브랜치로 공유</b> — <code>data/update-날짜</code> 같은 이름의 브랜치에 올립니다. Git은 바뀐 파일만 보여 주므로 리뷰가 쉽고, 옛 버전도 이력에 남습니다.</div></div>
+<div class="step"><div class="n">5</div><div class="t"><b>팀 합의 후 검색 DB 갱신</b> — 한 사람(담당자)이 다시 적재하고, 새 <code>data/chroma</code>를 <code>chroma_날짜.zip</code>과 설명 파일(레코드 수, 임베딩 모델, 기준이 된 업데이트 보고서 날짜)과 함께 공유합니다. 팀원은 폴더를 통째로 교체합니다.</div></div>
+
+<h3>2-3. 폴더 정리 제안</h3>
+<pre>data/raw/local/detail/              최신 정책 원본        → Git에 올림
+data/raw/local/update_reports/      이번에 무엇이 바뀌었나 → Git에 올림
+data/raw/local/detail_prev/날짜/    바뀌기 전 옛 파일      → 내 PC에만 보관 (Git 제외 권장)
+data/chroma/                       검색 DB               → Git 제외, 압축 파일로 따로 공유</pre>
+<p><code>detail_prev</code>를 Git에서 빼자는 이유는 Git 이력이 이미 옛 버전을 기억하기 때문입니다(중복 방지). 이 변경은 <code>.gitignore</code> 수정이 필요해서 아직 하지 않았습니다.</p>
+
+<h3>2-4. 이 도구가 지키는 약속</h3>
+<ul>
+  <li>검색 DB(<code>data/chroma</code>)는 <b>읽지도 쓰지도 않습니다.</b></li>
+  <li>기본 실행은 "점검만"이고, <code>--apply</code>를 붙여야 파일이 바뀝니다.</li>
+  <li>목록에서 사라진 정책은 알려만 주고 지우지 않습니다.</li>
+  <li>인증키는 환경변수나 입력창으로만 받고, 화면·파일에 남기지 않습니다.</li>
+  <li>지자체는 "최종 수정일"을 비교하지만, 중앙부처는 수정일이 없어서 모두 받아 내용이 달라졌는지 비교합니다(하루 호출 한도 때문에 2번에 나눠 끝납니다).</li>
+</ul>
+
+<!-- ================= 3. main 대비 ================= -->
+<h2 class="pb">3. main과 비교해 추가된 것과 기대효과</h2>
+<p><b>main</b>은 처음 합친 기본 버전입니다. 아래는 그 위에 더해진 것들입니다. 표시: <span class="tag jm">지민</span> 지민님 브랜치에서 온 것 · <span class="tag jh">종희</span> 종희님 브랜치에서 온 것 · <span class="tag new">추가</span> 합치면서 새로 만든 것</p>
+
+<h3>3-1. 검색이 더 정확해졌습니다</h3>
+<table>
+  <tr><th style="width:21%">추가된 것</th><th style="width:37%">쉬운 설명</th><th>기대효과 / 확인된 수치</th></tr>
+  <tr><td><span class="tag jm">지민</span> 거리 하한</td><td>질문과 너무 먼 정책은 결과에서 뺍니다.</td><td>"오늘 날씨" 같은 정책 밖 질문은 빈 결과. 평가 질문 280개 중 정답 정책의 99.2%는 그대로 남음</td></tr>
+  <tr><td><span class="tag jm">지민</span> 일상 말투 전용 설정</td><td>구어체 질문은 더 엄격한 기준으로, 지역보다 내용을 먼저 봅니다.</td><td>멀리 있는 지역 정책이 가까운 정책보다 위로 오는 문제 감소</td></tr>
+  <tr><td><span class="tag jm">지민</span> 구어체 → 정책 용어</td><td>"배고파" → "무료 급식 식사 지원"처럼 AI가 검색어를 바꿔 줍니다.</td><td>짧은 말도 검색됨</td></tr>
+  <tr><td><span class="tag jm">지민</span> AI 관련도 재판정</td><td>찾은 후보를 AI가 한 번 더 "이 사람에게 도움이 되나?" 확인해 아니면 뒤로 보냅니다.</td><td>기본 화면 관련 정책 비율 41% → 63% (질문 15개 소규모 측정). 실패해도 오류 없이 기존 순서로 동작</td></tr>
+  <tr><td><span class="tag jm">지민</span> 검색 안정화</td><td>"자격증관련 정책 알려줘"처럼 띄어쓰기·말투가 달라도 같은 결과가 나오게 합니다.</td><td>말투 때문에 빈 결과가 나오던 문제 해결</td></tr>
+  <tr><td><span class="tag jh">종희</span> 리랭커 <span class="tag new">추가 연결</span></td><td>검색 결과 후보를 질문과 얼마나 맞는지 다시 읽고 순서를 매기는 별도 AI 모델(<code>bge-reranker-v2-m3</code>)입니다.</td><td>모호한 질문에서 중앙부처 후보가 눈에 띄게 좋아짐(예: "자격증 시험 비용" 질문에서 '어업활동지원'이 빠지고 '전문기술인재장학금'이 올라옴). 소규모 확인이라 정량 비교는 앞으로 필요</td></tr>
+</table>
+
+<h3>3-2. 화면이 더 편해졌습니다 <span class="tag jm">지민</span></h3>
+<table>
+  <tr><th style="width:24%">추가된 것</th><th>쉬운 설명</th></tr>
+  <tr><td>후보 3개씩 이전/다음</td><td>후보가 많으면 지자체·중앙부처 그룹마다 3개씩 쪽을 넘겨 봅니다. (후보는 최대 12개까지)</td></tr>
+  <tr><td>관련도 낮은 후보 구분</td><td>관련도가 낮아 보이는 정책은 지우지 않고 뒤에 "관련도 낮음" 배지를 달아 이어서 보여 줍니다.</td></tr>
+  <tr><td>자주 묻는 질문 버튼</td><td>정책을 고르면 "지원 대상 / 금액 / 신청 방법 / 기간 / 서류 / 문의처" 버튼이 나옵니다. 버튼 질문은 분석 단계를 건너뛰어 더 빠릅니다.</td></tr>
+  <tr><td>상담 제목 직접 수정</td><td>왼쪽 상담 목록에서 ✎ 버튼으로 제목을 고칩니다.</td></tr>
+  <tr><td>키 입력 안내 <span class="tag new">추가</span></td><td>서버가 AI를 제공하면 "본인 Gemini 키 입력"이 필수가 아닌 선택으로 바뀝니다.</td></tr>
+</table>
+
+<h3>3-3. 답변이 더 읽기 쉬워졌습니다 <span class="tag jm">지민</span></h3>
+<ul>
+  <li><b>질문 유형별 답변 구성</b> — 지원 대상은 "누가 대상 → 제외·우선 대상 → 확인할 점"처럼 소제목과 불릿으로 정리하고, 원문에 없는 내용은 지어내지 않고 "확인되지 않습니다"로 안내합니다.</li>
+  <li><b>자료 링크 추출 확대</b> — <code>www…</code>나 도메인만 적힌 주소도 바로가기 버튼으로 만들고, "링크 알려줘"에 모순된 답이 나오지 않게 보정했습니다.</li>
+</ul>
+
+<h3>3-4. 더 빠르고 튼튼해졌습니다 <span class="tag new">추가</span></h3>
+<table>
+  <tr><th style="width:27%">변화</th><th>설명과 수치</th></tr>
+  <tr><td>서버 시작 때 미리 준비(워밍업)</td><td>켠 직후 첫 검색이 <b>38초 → 3.5초</b>. 첫 사용자가 오래 기다리다 화면이 끊기던 문제를 없앴습니다.</td></tr>
+  <tr><td>GPU(그래픽카드) 사용</td><td>리랭커 단계가 CPU에서는 질문당 5.5~7.4초였지만 GPU에서는 <b>0.6~1.0초</b>. GPU가 없는 PC는 자동으로 느리지만 안전한 방식으로 동작합니다.</td></tr>
+  <tr><td>공용 모듈로 정리 <span class="tag jm">지민</span></td><td>.env 읽기, AI 재시도, 검색 흐름을 한곳에 모아 같은 규칙으로 동작합니다.</td></tr>
+  <tr><td>AI 분석 결과 보정 <span class="tag new">추가</span></td><td>AI가 정책 이름도 없이 "특정 정책"이라 분류하거나, "알려줘·정책" 같은 군더더기를 검색 키워드로 넣어도 코드가 바로잡습니다. 어떤 AI를 써도 같은 규칙이 적용됩니다.</td></tr>
+  <tr><td>리랭커/AI가 실패해도 계속 동작</td><td>모델이 없거나 응답이 늦으면 오류 대신 기존 검색 순서로 결과를 보여 줍니다.</td></tr>
+</table>
+
+<h3>3-5. AI 종류를 바꿀 수 있는 구조가 생겼습니다 <span class="tag new">추가</span></h3>
+<p>지금까지는 모든 AI 호출이 Gemini에 고정돼 있었습니다. 이제 질문 분석·판정·답변이 "AI 호출 창구" 하나(<code>LLMClient</code>)만 거치도록 바꿔서, <b>Gemini 말고 서버가 직접 돌리는 Qwen 같은 AI도 꽂을 수 있습니다.</b> 설정하지 않으면 지금과 똑같이 동작합니다. 자세한 규칙은 5장에 있습니다.</p>
+
+<h3>3-6. 팀 작업을 돕는 것들 <span class="tag new">추가</span></h3>
+<ul>
+  <li>데이터 증분 갱신 도구(2장), 검색 거리 측정·사람 라벨링용 시트 생성 스크립트 <span class="tag jm">지민</span></li>
+  <li>계약서(공통 약속 문서) 수정 <b>제안서</b> — 팀 합의 전이라 계약서 본문은 건드리지 않고 제안 문서(<code>docs/contract_update_proposal.md</code>)로만 정리했습니다.</li>
+  <li>프로젝트 동작 설명서·라벨링 가이드(PDF), 브랜치 개요 문서</li>
+</ul>
+
+<!-- ================= 4. 두 브랜치 ================= -->
+<h2 class="pb">4. 두 브랜치에서 무엇을 적용했나</h2>
+<div class="box">두 사람이 같은 목표(관련 있는 정책만 보여주기)를 서로 다른 방법으로 구현했습니다. 그대로 합치면 <b>같은 일을 하는 코드가 두 벌</b>이 돼서 AI를 두 번 부르거나 서로 충돌합니다. 그래서 <b>지민님 브랜치를 바탕으로 두고, 종희님 쪽에서는 겹치지 않는 부분(리랭커)만 가져왔습니다.</b></div>
+
+<h3>4-1. 종희님 브랜치 <code>feature/jonghee-search-detail</code></h3>
+<table>
+  <tr><th style="width:30%">종희님이 만든 것</th><th style="width:13%">적용 여부</th><th>이유</th></tr>
+  <tr><td>리랭커 모듈 <code>reranker_service.py</code></td><td><span class="tag ok">적용</span></td><td>지민님 쪽에 없던 기능이라 그대로 가져옴. 검색 후보의 순서를 AI가 다시 매깁니다.</td></tr>
+  <tr><td>리랭커 설정값, <code>reranker_score</code> 필드, <code>transformers</code> 의존성</td><td><span class="tag ok">적용</span></td><td>나중에 종희님 브랜치와 합칠 때 충돌하지 않도록 <b>같은 내용</b>으로 맞춤</td></tr>
+  <tr><td>리랭커 테스트</td><td><span class="tag ok">적용</span></td><td>그대로 가져옴</td></tr>
+  <tr><td>Gemini 후보 적합성 판정 <code>relevance_service.py</code></td><td><span class="tag no">미적용</span></td><td>지민님의 AI 관련도 재판정(<code>relevance_judge.py</code>)과 <b>목적이 같음</b>. 하나만 남기기로 하고 지민님 것을 유지</td></tr>
+  <tr><td>제외 의도 구조화(<code>exclusions</code>)</td><td><span class="tag no">미적용</span></td><td>지민님은 "제외 키워드" 방식으로 이미 점수에 반영 중이라 방식이 충돌</td></tr>
+  <tr><td>검색 서비스 대폭 변경 (후보 30개, 거리 한도 0.70, 지역 가산점 제거)</td><td><span class="tag no">미적용</span></td><td>지민님의 일상 말투 전용 설정·키워드 점수와 충돌. 대신 리랭커가 쓸 후보 수만 따로 조절</td></tr>
+  <tr><td>화면의 관련성 배지(직접/조건부/간접), "검증 못 함" 경고</td><td><span class="tag no">미적용</span></td><td>서버가 그 값을 만들지 않는 구조라 화면만 가져오면 빈 값이 됨</td></tr>
+  <tr><td>계약서 본문 직접 수정</td><td><span class="tag no">미적용</span></td><td>계약서는 팀 합의 없이 바꾸지 않는 문서 → 제안서로 대체</td></tr>
+</table>
+<p>종희님 방향 위에 지민님 화면만 얹은 <b>별도 브랜치</b>(<code>feature/jimin-frontend-on-jonghee</code>, 아직 내 PC에만 있고 필요하면 올립니다)도 만들어 두었습니다. 팀이 종희님 방식을 기준으로 삼기로 하면 그 브랜치를 쓸 수 있습니다.</p>
+
+<h3>4-2. 지민님 브랜치 <code>feature/jimin-search-ux</code></h3>
+<table>
+  <tr><th style="width:30%">지민님이 만든 것</th><th style="width:13%">적용 여부</th></tr>
+  <tr><td>검색 안정화, 거리 하한, 일상 말투 전용 설정, 키워드 점수</td><td><span class="tag ok">전부 적용 (바탕)</span></td></tr>
+  <tr><td>AI 관련도 재판정, 검색 흐름 공용 모듈</td><td><span class="tag ok">전부 적용</span></td></tr>
+  <tr><td>3개씩 쪽 넘김, 관련도 낮음 구분, 상담 제목 수정</td><td><span class="tag ok">전부 적용</span></td></tr>
+  <tr><td>자주 묻는 질문 버튼, 질문 유형별 답변 구성</td><td><span class="tag ok">전부 적용</span></td></tr>
+  <tr><td>라벨링 시트 스크립트, 가이드·개요 문서, 테스트</td><td><span class="tag ok">전부 적용</span></td></tr>
+</table>
+
+<h3>4-3. 합치면서 새로 한 일</h3>
+<ol>
+  <li>종희님 리랭커를 지민님 검색 흐름의 "검색 직후, AI 재판정 직전"에 끼워 넣었습니다. (순서: 검색 → 리랭커 → AI 재판정 → 화면)</li>
+  <li>리랭커가 처리할 후보 수를 장치에 맞게 자동 조절했습니다 (CPU 12개 / GPU 30개).</li>
+  <li>서버 워밍업, GPU 설치 안내, AI 호출 창구 통일, Qwen 연결, 키 입력 안내, 데이터 갱신 도구를 추가했습니다.</li>
+</ol>
+
+<!-- ================= 5. AI 고르는 규칙 ================= -->
+<h2 class="pb">5. AI를 고르는 규칙 (Gemini / Qwen)</h2>
+<p>사용자가 자기 Gemini 키를 넣어서 쓰는 기능은 <b>그대로 둡니다.</b> 거기에 "서버가 직접 돌리는 Qwen"이 기본 AI가 될 수 있게 했습니다. 요청마다 아래 순서로 정해집니다.</p>
+<table>
+  <tr><th style="width:8%">순서</th><th style="width:44%">조건</th><th>사용하는 AI</th></tr>
+  <tr><td>1</td><td>사용자가 본인 Gemini 키를 보냄</td><td><b>항상 그 키의 Gemini</b> (서버 설정과 무관)</td></tr>
+  <tr><td>2</td><td>키 없음 + 서버에 Qwen이 설정돼 있음</td><td>서버의 Qwen</td></tr>
+  <tr><td>3</td><td>키 없음 + 서버 Gemini 키 사용을 허용함</td><td>서버의 Gemini</td></tr>
+  <tr><td>4</td><td>위에 모두 해당 없음</td><td>"API 키가 필요합니다" 안내</td></tr>
+</table>
+<ul>
+  <li>사용자 키로 보낸 질문이 서버 Qwen으로 새어 나가지 않도록 자동 테스트로 고정했습니다.</li>
+  <li>설정을 하나도 안 하면 지금까지와 똑같이 동작합니다.</li>
+</ul>
+
+<h3>Qwen 모델 시험 결과 (이 PC, 소규모 확인)</h3>
+<table>
+  <tr><th style="width:22%">모델</th><th style="width:15%">한 번 호출 시간</th><th>평가</th></tr>
+  <tr><td>qwen3-4b-2507 (작은 모델)</td><td>1.6~3.5초</td><td><b>부적합</b> — 제외 키워드를 엉뚱하게 채움(예: "월세가 부담돼요"에 '주택', '전세'를 제외). 이 값은 검색 점수를 깎아서 위험</td></tr>
+  <tr><td>qwen3-8b</td><td>1.0~4.2초</td><td><b>권장</b> — 검색어·제외 키워드가 정확. 다만 답변에 지침 문구가 섞이거나 판정이 가끔 시간 안에 못 끝남</td></tr>
+  <tr><td>(참고) Gemini</td><td>검색 전체 약 3~6초</td><td>기준. Qwen 8B는 검색 전체가 약 5~11초</td></tr>
+</table>
+<div class="box warn"><b>주의</b> — 질문 5개 수준의 확인이라 "Qwen을 기본으로 올려도 된다"는 결론은 아직 낼 수 없습니다. 평가 질문 280개로 Gemini와 비교한 뒤 정해야 합니다. 또 LM Studio에서 모델이 미리 올라가 있지 않으면 첫 요청이 100초 넘게 걸립니다.</div>
+
+<!-- ================= 6. 결정/한계 ================= -->
+<h2>6. 아직 정해야 할 것과 한계</h2>
+<h3>팀이 정해야 할 것</h3>
+<ol>
+  <li><b>검색 DB 다시 적재 여부</b> — 데이터를 새로 받아도 검색 DB를 다시 만들기 전에는 검색에 나오지 않습니다. 전체를 다시 만들지, 바뀐 정책만 넣을지, 누가 실행하고 어떻게 공유할지.</li>
+  <li><b>종희님/지민님 방식 정리</b> — 겹치는 기능(재판정 두 벌, 제외 의도 방식)을 장기적으로 어느 쪽으로 통일할지.</li>
+  <li><b>계약서 8장 제안 승인</b> — AI 선택 규칙, <code>GET /config</code>, 환경변수.</li>
+  <li><b>Qwen을 기본 AI로 올릴 기준</b> — 평가 질문 280개에서 어느 수준이면 올릴지.</li>
+  <li><b>Qwen 실행 위치</b> — 지금은 이 PC의 LM Studio. 사용자가 늘면 전용 서버나 vLLM 같은 방식으로 옮길 수 있음(코드는 주소만 바꾸면 됨).</li>
+</ol>
+<h3>한계 (솔직하게)</h3>
+<ul>
+  <li>데이터 갱신 도구는 <b>시험용 자료로만 검증</b>했고, 실제 복지로 서버에는 아직 연결해 보지 않았습니다.</li>
+  <li>검색 품질 수치 중 일부는 질문 15개~75개 수준의 작은 표본이며, 관련 여부 판정도 사람이 아닌 AI가 했습니다. "방향을 보는 용도"입니다.</li>
+  <li>리랭커 효과는 사례로는 보이지만, 평가 질문으로 켠/끈 결과를 수치로 비교한 것은 아닙니다(쉬운 평가셋이라 차이가 크게 나지 않았음).</li>
+  <li>특정 집단 전용 정책(장애인·보훈 등)은 질문에 언급이 없으면 접히는데, 이 방식이 맞는지는 자격 판정 기능과 함께 다시 설계해야 합니다.</li>
+  <li>화면 동작은 개발자가 직접 써 보며 확인한 범위이고, 여러 사용자가 동시에 쓰는 시험은 하지 않았습니다.</li>
+</ul>
+
+<!-- ================= 7. 용어 ================= -->
+<h2 class="pb">7. 쉬운 용어 풀이</h2>
+<table>
+  <tr><th style="width:24%">용어</th><th>뜻</th></tr>
+  <tr><td>브랜치</td><td>코드를 안전하게 따로 고치는 "복사본 작업 공간". 다 되면 본 줄기(main)에 합칩니다.</td></tr>
+  <tr><td>main</td><td>팀이 함께 쓰는 기본(본 줄기) 버전.</td></tr>
+  <tr><td>임베딩</td><td>문장의 의미를 숫자로 바꾸는 기술. 숫자가 가까울수록 뜻이 비슷하다고 보고 검색합니다.</td></tr>
+  <tr><td>ChromaDB (<code>data/chroma</code>)</td><td>정책 문서를 임베딩과 함께 저장해 둔 검색용 데이터베이스.</td></tr>
+  <tr><td>거리(distance)</td><td>질문과 정책이 얼마나 다른지 나타내는 값. 작을수록 비슷합니다.</td></tr>
+  <tr><td>리랭커</td><td>1차로 찾은 후보를 질문과 하나씩 맞대어 읽고 순서를 다시 매기는 AI 모델. 검색의 "2차 심사".</td></tr>
+  <tr><td>Gemini / Qwen</td><td>글을 이해하고 쓰는 AI. Gemini는 구글의 외부 서비스(API 키 필요), Qwen은 서버에서 직접 돌릴 수 있는 모델.</td></tr>
+  <tr><td>API 키</td><td>외부 서비스를 쓰기 위한 비밀번호 같은 값. 코드나 채팅에 올리면 안 됩니다.</td></tr>
+  <tr><td>LM Studio</td><td>Qwen 같은 모델을 내 PC에서 돌리는 프로그램.</td></tr>
+  <tr><td>GPU</td><td>그래픽카드. AI 계산을 CPU보다 훨씬 빠르게 합니다.</td></tr>
+  <tr><td>BYOK</td><td>"내 키를 가져와서 쓰기". 사용자가 자기 Gemini 키를 넣어 쓰는 방식.</td></tr>
+  <tr><td>증분 수집</td><td>전체를 다시 받지 않고, 새로 생기거나 바뀐 것만 받는 방식.</td></tr>
+  <tr><td>재적재</td><td>받은 원본으로 검색 DB를 다시 만들어 넣는 작업. 시간이 걸리고 모두의 DB가 바뀌므로 합의 후 한 사람이 진행합니다.</td></tr>
+  <tr><td>워밍업</td><td>서버를 켠 직후 미리 한 번 돌려 두어, 첫 사용자가 오래 기다리지 않게 하는 준비 작업.</td></tr>
+</table>
+<div class="box"><b>문의</b> — 이 문서의 근거 문서: <code>docs/contract_update_proposal.md</code>(계약서 수정 제안), <code>docs/BRANCH_OVERVIEW.md</code>(지민님 브랜치 변경 정리), <code>scripts/README.md</code>(스크립트 사용법).</div>
+
+</body>
+</html>
