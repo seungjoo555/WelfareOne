@@ -63,15 +63,15 @@ public class AuthService {
     }
 
     @Transactional(readOnly = true)
-    public AuthResponse login(LoginRequest request) {
-        // 같은 이메일로 연속 실패하면 잠시 막는다(무차별 대입 방지)
-        loginAttempts.checkAllowed(request.getEmail());
+    public AuthResponse login(LoginRequest request, String clientIp) {
+        // 연속 실패하면 잠시 막는다(무차별 대입 방지). 이메일+IP, 이메일, IP 세 기준으로 센다.
+        loginAttempts.checkAllowed(request.getEmail(), clientIp);
         User user = userMapper.findByEmail(request.getEmail());
         if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-            loginAttempts.recordFailure(request.getEmail());
+            loginAttempts.recordFailure(request.getEmail(), clientIp);
             throw ApiException.invalidCredentials();
         }
-        loginAttempts.reset(request.getEmail());
+        loginAttempts.reset(request.getEmail(), clientIp);
 
         String token = jwtTokenProvider.createToken(user.getUserId(), user.getEmail(), user.getRole());
         UserApiKey key = userApiKeyMapper.findByUserId(user.getUserId());

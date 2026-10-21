@@ -5,6 +5,7 @@ import com.welfareone.memberjoin.dto.LoginRequest;
 import com.welfareone.memberjoin.dto.SignUpRequest;
 import com.welfareone.memberjoin.dto.UserProfileDto;
 import com.welfareone.memberjoin.service.AuthService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -28,8 +29,8 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
-        AuthResponse response = authService.login(request);
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request, HttpServletRequest http) {
+        AuthResponse response = authService.login(request, http.getRemoteAddr());
         return ResponseEntity.ok(response);
     }
 

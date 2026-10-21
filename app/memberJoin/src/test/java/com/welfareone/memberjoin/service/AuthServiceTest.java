@@ -37,6 +37,8 @@ class AuthServiceTest {
         service = new AuthService(userMapper, mock(UserApiKeyMapper.class), encoder, jwt, attempts);
     }
 
+    private static final String IP = "10.0.0.1";
+
     private static LoginRequest login(String email, String password) {
         LoginRequest request = new LoginRequest();
         request.setEmail(email);
@@ -62,7 +64,7 @@ class AuthServiceTest {
         when(userMapper.findByEmail("a@example.com")).thenReturn(user);
 
         for (LoginRequest request : new LoginRequest[]{login("a@example.com", "wrong-password"), login("nobody@example.com", "whatever12")}) {
-            assertThatThrownBy(() -> service.login(request)).isInstanceOfSatisfying(ApiException.class, e -> {
+            assertThatThrownBy(() -> service.login(request, IP)).isInstanceOfSatisfying(ApiException.class, e -> {
                 assertThat(e.getCode()).isEqualTo("INVALID_CREDENTIALS");
                 assertThat(e.getStatus().value()).isEqualTo(401);
             });
@@ -73,10 +75,10 @@ class AuthServiceTest {
     void sixthWrongPasswordIsBlocked() {
         when(userMapper.findByEmail("a@example.com")).thenReturn(null);
         for (int i = 0; i < LoginAttemptService.MAX_FAILURES; i++) {
-            assertThatThrownBy(() -> service.login(login("a@example.com", "wrong-password"))).isInstanceOf(ApiException.class);
+            assertThatThrownBy(() -> service.login(login("a@example.com", "wrong-password"), IP)).isInstanceOf(ApiException.class);
         }
 
-        assertThatThrownBy(() -> service.login(login("a@example.com", "wrong-password")))
+        assertThatThrownBy(() -> service.login(login("a@example.com", "wrong-password"), IP))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getCode()).isEqualTo("TOO_MANY_LOGIN_ATTEMPTS"));
     }
 
@@ -86,10 +88,10 @@ class AuthServiceTest {
         when(userMapper.findByEmail("a@example.com")).thenReturn(user);
         when(jwt.createToken(1L, "a@example.com", "ROLE_USER")).thenReturn("token");
         for (int i = 0; i < LoginAttemptService.MAX_FAILURES - 1; i++) {
-            assertThatThrownBy(() -> service.login(login("a@example.com", "wrong-password"))).isInstanceOf(ApiException.class);
+            assertThatThrownBy(() -> service.login(login("a@example.com", "wrong-password"), IP)).isInstanceOf(ApiException.class);
         }
 
-        assertThat(service.login(login("a@example.com", "right-password")).getAccessToken()).isEqualTo("token");
-        attempts.checkAllowed("a@example.com");  // 카운터가 초기화돼 막히지 않음
+        assertThat(service.login(login("a@example.com", "right-password"), IP).getAccessToken()).isEqualTo("token");
+        attempts.checkAllowed("a@example.com", IP);  // 카운터가 초기화돼 막히지 않음
     }
 }
