@@ -126,7 +126,14 @@ export type ApiErrorCode =
   | "API_KEY_REQUIRED" // [초안] 사용자 Gemini 키(BYOK)가 없고 서버 키 폴백도 꺼진 경우 (401)
   | "INVALID_API_KEY" // [초안] 사용자 키 형식이 틀렸거나 Gemini가 거부한 경우 (401)
   | "DATABASE_ERROR"
-  | "INTERNAL_ERROR";
+  | "INTERNAL_ERROR"
+  // 회원·상담 기록 서버(Spring)가 쓰는 코드(계약서 17.4)
+  | "UNAUTHORIZED" // 로그인이 필요하거나 토큰이 유효하지 않음 (401)
+  | "FORBIDDEN" // 남의 상담 세션 접근 (403)
+  | "INVALID_CREDENTIALS" // 이메일 또는 비밀번호 불일치 (401)
+  | "USER_ALREADY_EXISTS" // 이미 가입된 이메일 (409)
+  | "SESSION_NOT_FOUND" // 상담 세션 없음 (404)
+  | "TOO_MANY_LOGIN_ATTEMPTS"; // 로그인 연속 실패로 잠시 제한 (429)
 // 프론트에서만 만드는 오류(서버 응답 없음)
 export type ClientErrorCode = "NETWORK_ERROR" | "TIMEOUT";
 export type AppErrorCode = ApiErrorCode | ClientErrorCode;

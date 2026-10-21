@@ -624,42 +624,204 @@ def search_policy_node(state):
 
 ## 17. FastAPI 계약 초안
 
-| Method | URL | 역할 |
-|---|---|---|
-| GET | `/regions` | 지역 목록 조회 |
-| POST | `/policies/search` | 정책 후보 검색 |
-| GET | `/policies/{policy_id}` | 정책 상세 조회 |
-| POST | `/policies/{policy_id}/ask` | 선택 정책 질문 답변 |
-| POST | `/sessions` | 대화 세션 생성 |
-| POST | `/sessions/{session_id}/messages` | 대화 메시지 처리 |
-| POST | `/sessions/{session_id}/eligibility` | 자격 확인 진행 |
+FastAPI(및 Spring Boot BFF)에서 사용하는 공통 REST API 계약이다. 모든 엔드포인트는 구조화된 JSON을 반환하며, 필드명은 `snake_case`를 준수한다.
 
-API 성공 응답은 구조화된 JSON으로 반환한다. 사용자에게 보여줄 한국어 문구만 반환하지 않는다.
+### 17.1. 엔드포인트 목록
 
-오류 응답 기본 형식:
+| 도메인 | Method | URL | 역할 | 인증 헤더 |
+|---|---|---|---|---|
+| **시스템/지역** | GET | `/health` | 서버 및 AI 모델 준비 상태 확인 | 선택 |
+| | GET | `/regions` | 지원 가능 지역 목록 조회 | 없음 |
+| **정책/RAG** | POST | `/policies/search` | 정책 후보 검색 (지자체/중앙부처 분리) | `X-Gemini-Api-Key` 또는 Bearer |
+| | GET | `/policies/{policy_id}` | 정책 상세 섹션 원문 조회 | 없음 |
+| | POST | `/policies/{policy_id}/ask` | 선택 정책 원문 기반 질문 답변 | `X-Gemini-Api-Key` 또는 Bearer |
+| **회원/인증** | POST | `/auth/signup` | 신규 회원가입 | 없음 |
+| | POST | `/auth/login` | 로그인 및 JWT 토큰 발급 | 없음 |
+| | GET | `/auth/me` | 내 프로필 정보 및 기본 지역/나이 조회 | `Authorization: Bearer` |
+| | POST | `/auth/logout` | 로그아웃 (세션 정리) | `Authorization: Bearer` |
+| **Gemini 키** | PUT | `/users/api-key` | 사용자 Gemini API 키 등록/수정 (암호화 저장) | `Authorization: Bearer` |
+| | GET | `/users/api-key/status`| API 키 등록 여부 및 갱신일시 확인 | `Authorization: Bearer` |
+| | DELETE | `/users/api-key` | 등록된 Gemini API 키 삭제 | `Authorization: Bearer` |
+| **대화/로그** | GET | `/sessions` | 회원의 이전 상담 세션 목록 조회 (히스토리 탭) | `Authorization: Bearer` |
+| | POST | `/sessions` | 신규 상담 세션 생성 (지역/나이 설정) | 선택 (비회원은 Local) |
+| | GET | `/sessions/{session_id}` | 특정 세션 상세 및 전체 대화 로그 조회 | `Authorization: Bearer` |
+| | DELETE| `/sessions/{session_id}` | 특정 상담 세션 및 대화 로그 삭제 | `Authorization: Bearer` |
+| | PATCH | `/sessions/{session_id}/title` | 상담 세션 제목 수정 | `Authorization: Bearer` |
+| | POST | `/sessions/{session_id}/messages` | 세션 내 대화 메시지 처리 및 로그 영속화 | `Authorization: Bearer` |
+| | POST | `/sessions/{session_id}/eligibility` | 자격 확인 진행 (단계 1) | `Authorization: Bearer` |
+
+---
+
+### 17.2. 인증 및 헤더 규칙
+
+1. **사용자 JWT 인증 (`Authorization`)**:
+   - `Authorization: Bearer <jwt_access_token>`
+   - 회원 전용 API(프로필, API 키 관리, 클라우드 히스토리 동기화) 호출 시 필수.
+2. **BYOK (Bring Your Own Key) 전달 (`X-Gemini-Api-Key`)**:
+   - `X-Gemini-Api-Key: <gemini_api_key>`
+   - 비회원 또는 클라이언트가 직접 AI 키를 전달할 때 사용. 서버는 키를 로그에 기록하지 않음.
+   - 로그인 회원의 경우 백엔드(Spring Boot/DB)에 암호화 저장된 키가 자동 주입되므로 클라이언트가 직접 보낼 필요 없음.
+
+---
+
+### 17.3. 주요 요청 및 응답 본문 규격
+
+#### ① 회원가입 (`POST /auth/signup`)
+```json
+// Request
+{
+  "email": "user@example.com",
+  "password": "Password123!",
+  "nickname": "청년희망",
+  "default_region_level1": "서울특별시",
+  "default_region_level2": "관악구",
+  "default_age": 25
+}
+// Response (201 Created)
+{
+  "user_id": 1,
+  "email": "user@example.com",
+  "nickname": "청년희망",
+  "created_at": "2026-10-15T12:00:00Z"
+}
+```
+
+#### ② 로그인 (`POST /auth/login`)
+```json
+// Request
+{
+  "email": "user@example.com",
+  "password": "Password123!"
+}
+// Response (200 OK)
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "Bearer",
+  "user": {
+    "user_id": 1,
+    "email": "user@example.com",
+    "nickname": "청년희망",
+    "default_region_level1": "서울특별시",
+    "default_region_level2": "관악구",
+    "default_age": 25,
+    "has_api_key": true
+  }
+}
+```
+
+#### ③ Gemini API 키 관리 (`PUT /users/api-key`, `GET /users/api-key/status`)
+```json
+// PUT /users/api-key Request
+{
+  "api_key": "AIzaSyD-example-key-value"
+}
+// Response
+{
+  "status": "ok",
+  "has_api_key": true,
+  "updated_at": "2026-10-15T12:05:00Z"
+}
+
+// GET /users/api-key/status Response (보안상 실제 키 문자열은 반환하지 않음)
+{
+  "has_api_key": true,
+  "updated_at": "2026-10-15T12:05:00Z"
+}
+```
+
+#### ④ 대화 세션 및 로그 조회 (`GET /sessions`, `GET /sessions/{session_id}`)
+```json
+// GET /sessions Response (목록)
+[
+  {
+    "session_id": "550e8400-e29b-41d4-a716-446655440000",
+    "title": "관악구 청년 월세 지원 상담",
+    "region_level1": "서울특별시",
+    "region_level2": "관악구",
+    "age": 25,
+    "created_at": "2026-10-15T10:00:00Z",
+    "updated_at": "2026-10-15T10:30:00Z"
+  }
+]
+
+// GET /sessions/{session_id} Response (상세 및 대화 로그 전체 복원)
+{
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "title": "관악구 청년 월세 지원 상담",
+  "region_level1": "서울특별시",
+  "region_level2": "관악구",
+  "age": 25,
+  "messages": [
+    {
+      "message_id": "msg-001",
+      "sender_type": "user",
+      "content": "월세가 부담스러운데 지원받을 수 있을까요?",
+      "created_at": "2026-10-15T10:00:00Z"
+    },
+    {
+      "message_id": "msg-002",
+      "sender_type": "assistant",
+      "content": "관악구 및 중앙부처에서 지원하는 월세 지원 정책 3건을 찾았습니다.",
+      "route": "situation_search",
+      "intents": ["benefit"],
+      "candidates": [
+        {
+          "policy_id": "local:WLF00006618",
+          "title": "청년 월세 한시 특별지원",
+          "scope": "시군구",
+          "summary": "..."
+        }
+      ],
+      "evidence": [],
+      "resources": [],
+      "created_at": "2026-10-15T10:00:05Z"
+    }
+  ]
+}
+```
+
+---
+
+### 17.4. 오류 응답 규격
+
+API 실패 시 항상 통일된 오류 구조를 반환한다.
 
 ```json
 {
   "error": {
-    "code": "POLICY_NOT_FOUND",
-    "message": "정책을 찾을 수 없습니다.",
+    "code": "INVALID_CREDENTIALS",
+    "message": "이메일 또는 비밀번호가 올바르지 않습니다.",
     "details": null
   }
 }
 ```
 
-초기 오류 코드:
+#### 공통 오류 코드 목록:
 
 ```text
-INVALID_REQUEST
-INVALID_REGION
-POLICY_NOT_FOUND
-NO_SEARCH_RESULTS
-LLM_RESPONSE_INVALID
-LLM_RATE_LIMITED
-DATABASE_ERROR
-INTERNAL_ERROR
+-- 클라이언트 요청 오류
+INVALID_REQUEST           -- 파라미터 유효성 검증 실패 (422/400)
+INVALID_REGION            -- 지원하지 않는 지역명
+POLICY_NOT_FOUND          -- 정책 ID 미존재 (404)
+SESSION_NOT_FOUND         -- 상담 세션 ID 미존재 (404)
+NO_SEARCH_RESULTS         -- 검색 결과 없음
+
+-- 인증 및 보안 오류
+UNAUTHORIZED              -- 로그인 필요 또는 유효하지 않은 JWT 토큰 (401)
+FORBIDDEN                 -- 타인의 상담 세션 접근 등 권한 없음 (403)
+INVALID_CREDENTIALS       -- 로그인 아이디/비밀번호 불일치 (401)
+USER_ALREADY_EXISTS       -- 이미 가입된 이메일 계정 (409)
+TOO_MANY_LOGIN_ATTEMPTS   -- 같은 이메일로 로그인 연속 실패(5회/10분) 시 잠시 제한 (429)
+INVALID_API_KEY           -- 잘못된 Gemini API 키 (401)
+API_KEY_REQUIRED          -- AI 질의에 필요한 API 키 누락 (401)
+
+-- 서버 및 AI 모델 오류
+LLM_RESPONSE_INVALID      -- AI 응답 파싱 실패 (502)
+LLM_RATE_LIMITED          -- Gemini API 호출 한도 초과 (429)
+DATABASE_ERROR            -- DB(ChromaDB 또는 Oracle) 조회 실패 (500)
+INTERNAL_ERROR            -- 서버 내부 예기치 않은 오류 (500)
 ```
+
 
 ## 18. 파일 역할과 담당 범위
 

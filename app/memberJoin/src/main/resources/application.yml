@@ -1,0 +1,33 @@
+server:
+  port: 8080
+
+spring:
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration  # JWT만 쓰므로 기본 계정(임시 비밀번호) 자동 생성을 끈다
+  application:
+    name: memberJoin
+  datasource:
+    driver-class-name: oracle.jdbc.OracleDriver
+    url: ${DB_URL:jdbc:oracle:thin:@172.31.57.141:1521/WELFAREONE_ORACLE_DB}
+    username: ${DB_USERNAME:WELFAREONE}
+    password: ${DB_PASSWORD:}
+
+mybatis:
+  mapper-locations: classpath:mapper/**/*.xml
+  type-aliases-package: com.welfareone.memberjoin.domain
+  configuration:
+    map-underscore-to-camel-case: true # DB의 snake_case와 Java의 camelCase 자동 매핑
+    jdbc-type-for-null: null
+
+jwt:
+  secret: ${JWT_SECRET:c29tZS12ZXJ5LXNlY3VyZS1hbmQtbG9uZy1zZWNyZXQta2V5LWZvci13ZWxmYXJlb25lLWp3dC1hdXRoCg==}
+  expiration-ms: 86400000 # 24시간
+
+security:
+  aes:
+    master-key: ${AES_MASTER_KEY:WelfareOneAESKey32BytesLengthSec!} # 32바이트 AES 마스터 키
+
+fastapi:
+  base-url: ${FASTAPI_BASE_URL:http://localhost:8000}
+  connect-timeout-ms: ${FASTAPI_CONNECT_TIMEOUT_MS:3000}
+  read-timeout-ms: ${FASTAPI_READ_TIMEOUT_MS:60000}

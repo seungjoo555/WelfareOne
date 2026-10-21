@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.welfareone.memberjoin.mapper.ChatMessageMapper">
+
+    <insert id="insertMessage" parameterType="com.welfareone.memberjoin.domain.ChatMessage">
+        INSERT INTO CHAT_MESSAGES (
+            message_id,
+            session_id,
+            sender_type,
+            content,
+            route,
+            intents_json,
+            selected_policy_id,
+            candidates_json,
+            evidence_json,
+            resources_json,
+            created_at
+        ) VALUES (
+            #{messageId},
+            #{sessionId},
+            #{senderType},
+            #{content, jdbcType=CLOB},
+            #{route, jdbcType=VARCHAR},
+            #{intentsJson, jdbcType=VARCHAR},
+            #{selectedPolicyId, jdbcType=VARCHAR},
+            #{candidatesJson, jdbcType=CLOB},
+            #{evidenceJson, jdbcType=CLOB},
+            #{resourcesJson, jdbcType=CLOB},
+            CURRENT_TIMESTAMP
+        )
+    </insert>
+
+    <select id="findBySessionIdOrderByCreatedAtAsc" resultType="com.welfareone.memberjoin.domain.ChatMessage">
+        SELECT
+            message_id,
+            session_id,
+            sender_type,
+            content,
+            route,
+            intents_json,
+            selected_policy_id,
+            candidates_json,
+            evidence_json,
+            resources_json,
+            created_at
+        FROM CHAT_MESSAGES
+        WHERE session_id = #{sessionId}
+        ORDER BY created_at ASC
+    </select>
+
+    <delete id="deleteBySessionId">
+        DELETE FROM CHAT_MESSAGES
+        WHERE session_id = #{sessionId}
+    </delete>
+
+</mapper>
+

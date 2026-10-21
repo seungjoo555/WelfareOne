@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.welfareone.memberjoin.mapper.ChatSessionMapper">
+
+    <insert id="insertSession" parameterType="com.welfareone.memberjoin.domain.ChatSession">
+        INSERT INTO CHAT_SESSIONS (
+            session_id,
+            user_id,
+            title,
+            region_level1,
+            region_level2,
+            age,
+            created_at,
+            updated_at
+        ) VALUES (
+            #{sessionId},
+            #{userId},
+            #{title},
+            #{regionLevel1},
+            #{regionLevel2, jdbcType=VARCHAR},
+            #{age, jdbcType=INTEGER},
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP
+        )
+    </insert>
+
+    <select id="findByUserIdOrderByUpdatedAtDesc" resultType="com.welfareone.memberjoin.domain.ChatSession">
+        SELECT
+            session_id,
+            user_id,
+            title,
+            region_level1,
+            region_level2,
+            age,
+            created_at,
+            updated_at
+        FROM CHAT_SESSIONS
+        WHERE user_id = #{userId}
+        ORDER BY updated_at DESC
+    </select>
+
+    <select id="findById" resultType="com.welfareone.memberjoin.domain.ChatSession">
+        SELECT
+            session_id,
+            user_id,
+            title,
+            region_level1,
+            region_level2,
+            age,
+            created_at,
+            updated_at
+        FROM CHAT_SESSIONS
+        WHERE session_id = #{sessionId}
+    </select>
+
+    <update id="updateSessionTitle">
+        UPDATE CHAT_SESSIONS
+        SET
+            title = #{title},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE session_id = #{sessionId}
+    </update>
+
+    <update id="updateSessionUpdatedAt">
+        UPDATE CHAT_SESSIONS
+        SET updated_at = CURRENT_TIMESTAMP
+        WHERE session_id = #{sessionId}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM CHAT_SESSIONS
+        WHERE session_id = #{sessionId}
+    </delete>
+
+</mapper>
+
