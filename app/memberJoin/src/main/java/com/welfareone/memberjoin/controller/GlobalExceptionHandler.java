@@ -1,5 +1,6 @@
 package com.welfareone.memberjoin.controller;
 
+import com.welfareone.memberjoin.exception.ApiException;
 import com.welfareone.memberjoin.exception.UpstreamApiException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -13,6 +14,16 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    // 계약서 17.4 오류 코드(UNAUTHORIZED, INVALID_CREDENTIALS, USER_ALREADY_EXISTS, SESSION_NOT_FOUND, FORBIDDEN 등)
+    @ExceptionHandler(ApiException.class)
+    public ResponseEntity<Map<String, Object>> handleApi(ApiException e) {
+        Map<String, Object> error = new HashMap<>();
+        error.put("code", e.getCode());
+        error.put("message", e.getMessage());
+        error.put("details", null);
+        return ResponseEntity.status(e.getStatus()).body(Map.of("error", error));
+    }
 
     // FastAPI 오류(API_KEY_REQUIRED, INVALID_API_KEY, LLM_RATE_LIMITED 등)는 상태 코드와 본문을 그대로 전달한다.
     @ExceptionHandler(UpstreamApiException.class)

@@ -811,6 +811,7 @@ UNAUTHORIZED              -- 로그인 필요 또는 유효하지 않은 JWT 토
 FORBIDDEN                 -- 타인의 상담 세션 접근 등 권한 없음 (403)
 INVALID_CREDENTIALS       -- 로그인 아이디/비밀번호 불일치 (401)
 USER_ALREADY_EXISTS       -- 이미 가입된 이메일 계정 (409)
+TOO_MANY_LOGIN_ATTEMPTS   -- 같은 이메일로 로그인 연속 실패(5회/10분) 시 잠시 제한 (429)
 INVALID_API_KEY           -- 잘못된 Gemini API 키 (401)
 API_KEY_REQUIRED          -- AI 질의에 필요한 API 키 누락 (401)
 

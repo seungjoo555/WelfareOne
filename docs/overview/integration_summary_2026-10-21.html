@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>회원·상담기록 통합 현황 (2026-10-21)</title>
+<style>
+  :root { --ink:#1f2933; --muted:#52606d; --line:#cbd2d9; --brand:#0b6b5f; --soft:#effaf8; --bad:#b42318; --badbg:#fef3f2; --warn:#b54708; --warnbg:#fffaeb; --ok:#067647; --okbg:#ecfdf3; --code:#eef1f4; }
+  * { box-sizing: border-box; }
+  body { font-family: "Malgun Gothic","맑은 고딕",system-ui,sans-serif; color: var(--ink); line-height: 1.6; margin: 0; background:#f7f9fa; }
+  .wrap { max-width: 1020px; margin: 0 auto; padding: 28px 22px 60px; }
+  header h1 { font-size: 26px; color: var(--brand); margin: 0 0 4px; }
+  header .sub { color: var(--muted); margin: 0 0 18px; }
+  h2 { font-size: 19px; color: var(--brand); border-bottom: 2px solid var(--brand); padding-bottom: 4px; margin: 34px 0 12px; }
+  h3 { font-size: 15px; margin: 18px 0 6px; }
+  p { margin: 6px 0; }
+  code { font-family: Consolas, monospace; background: var(--code); padding: 0 4px; border-radius: 4px; font-size: .9em; }
+  a { color: #0b5cad; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 13.5px; background:#fff; }
+  th, td { border: 1px solid var(--line); padding: 6px 9px; vertical-align: top; text-align: left; }
+  th { background: #e3f3f0; }
+  .box { border-left: 4px solid var(--brand); background: var(--soft); padding: 9px 14px; margin: 12px 0; border-radius: 0 6px 6px 0; }
+  .box.bad { border-color: var(--bad); background: var(--badbg); }
+  .box.warn { border-color: var(--warn); background: var(--warnbg); }
+  .tag { display:inline-block; padding:0 8px; border-radius: 10px; font-size: 12px; font-weight: bold; color:#fff; white-space: nowrap; }
+  .t-new { background: var(--ok); } .t-chg { background: #1d4ed8; } .t-fix { background: #7c3aed; } .t-warn { background: var(--warn); } .t-info { background:#475467; }
+  .cards { display:grid; grid-template-columns: repeat(auto-fit,minmax(200px,1fr)); gap: 12px; margin: 12px 0; }
+  .card { background:#fff; border:1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .card b { display:block; font-size: 22px; color: var(--brand); }
+  svg text { font-family: "Malgun Gothic",sans-serif; font-size: 12px; }
+  ol, ul { margin: 6px 0; padding-left: 22px; }
+  .small { font-size: 12.5px; color: var(--muted); }
+  .check li { list-style: none; margin-left: -18px; }
+  .check li::before { content: "☐ "; }
+  @media print { body { background:#fff; } .wrap { padding: 0; } h2 { break-after: avoid; } tr { break-inside: avoid; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>회원·상담기록 통합 현황</h1>
+  <p class="sub">브랜치 <code>feature/integrate-chanul</code> (main <code>9ad7591</code> 기준) · 2026-10-21 · 찬울님 작업(회원가입·상담 기록)을 main에 연결한 결과와 직접 시험하는 방법</p>
+</header>
+
+<!-- ================= 1 ================= -->
+<h2>1. 한눈에 보기</h2>
+<div class="cards">
+  <div class="card"><b>73개 파일</b>main 대비 변경 (+5,628줄 / −37줄), 커밋 6개</div>
+  <div class="card"><b>기능 5가지 추가</b>회원가입·로그인, 상담 기록 저장·복원, Gemini 키 암호 보관, 로그인 보호, AI 요청 기록</div>
+  <div class="card"><b>Python 변경 0</b>검색·AI 서버(FastAPI)는 main과 동일. 새 서버(Spring)만 추가</div>
+  <div class="card"><b>테스트 82개</b>Java 35 · 프론트 47 통과 + 종단 36항목 통과</div>
+</div>
+<div class="box">
+  <b>무엇이 달라졌나</b> — main은 <b>로그인 없이 쓰는 서비스</b>(상담 기록은 내 브라우저에만 저장)였습니다. 이 브랜치는 <b>회원가입·로그인을 추가</b>하고, 로그인한 사용자의 상담 기록을 <b>Oracle DB(서버)에 저장</b>해서 다른 기기·새로고침 후에도 이어 볼 수 있게 합니다.
+  <b>로그인하지 않아도 기존과 똑같이 쓸 수 있습니다</b>(게스트 모드 유지).
+</div>
+
+<!-- ================= 2 ================= -->
+<h2>2. 지금 열려 있는 서버와 직접 시험하는 방법</h2>
+<div class="box warn">
+  <b>시험용 서버가 이 PC에서 돌고 있습니다.</b> 아래 주소로 접속해 시험하시면 됩니다. 로그인 정보는 시험하는 분이 새로 가입하면 됩니다.
+</div>
+<table>
+  <tr><th style="width:22%">서버</th><th style="width:20%">주소</th><th>역할</th></tr>
+  <tr><td><b>화면(프론트)</b></td><td><a href="http://localhost:5173">http://localhost:5173</a></td><td>여기로 접속해서 시험합니다. 나머지 두 서버로 요청을 알아서 나눠 보냅니다.</td></tr>
+  <tr><td>회원·기록 서버(Spring)</td><td><code>localhost:8080</code></td><td>가입·로그인, 상담 기록, Gemini 키 보관. 찬울님 PC의 Oracle DB(172.31.57.141)에 연결</td></tr>
+  <tr><td>검색·AI 서버(FastAPI)</td><td><code>localhost:8000</code></td><td>정책 검색, 리랭커, AI 답변(기존 main과 동일)</td></tr>
+</table>
+
+<h3>시험 순서 (체크리스트)</h3>
+<ul class="check">
+  <li><b>게스트 모드</b>: 로그인 없이 지역(서울특별시)·나이 입력 → "월세가 부담돼요" → 후보가 나오고, 후보를 눌러 "신청 방법" 버튼으로 답변을 받는다. 이전과 같아야 합니다.</li>
+  <li><b>회원가입</b>: 왼쪽 아래 "로그인 / 회원가입" → 회원가입 탭 → 이메일·닉네임·비밀번호(8자 이상) 입력 → 가입 후 왼쪽 위에 "○○ 님"이 보인다.</li>
+  <li><b>기록 저장</b>: 로그인한 상태에서 질문하면 왼쪽 "저장된 대화 기록 (Oracle DB)"에 상담이 자동으로 생기고, 제목이 첫 질문으로 바뀐다.</li>
+  <li><b>새로고침 후 복원</b>: 브라우저를 새로고침해도 로그인이 유지되고, 왼쪽 기록을 누르면 이전 대화(질문·후보·답변)가 그대로 나온다.</li>
+  <li><b>이어서 질문</b>: 복원한 상담에서 정책을 고르고 "자주 묻는 질문" 버튼을 누르면 같은 상담에 이어서 기록된다.</li>
+  <li><b>잘못된 로그인</b>: 틀린 비밀번호로 로그인하면 "이메일 또는 비밀번호가 올바르지 않아요"가 나오고, 같은 이메일로 5번 틀리면 잠시 로그인이 막힌다(10분).</li>
+  <li><b>로그아웃</b>: "로그아웃" 후 기록 목록이 사라지고 게스트 모드로 돌아간다.</li>
+</ul>
+<div class="box">
+  <b>시험할 때 알아 둘 점</b>
+  <ul>
+    <li>Gemini API 키가 없어도 됩니다. 이 서버는 서버에 설정된 키로 AI를 호출하도록 켜 두었습니다(<code>/api/config</code>가 "서버 AI 사용 가능"을 알려 줌). 본인 키를 쓰려면 화면의 "API 키" 버튼에서 입력하면 그 키가 우선 사용됩니다.</li>
+    <li>검색 DB는 <b>기존 <code>data/chroma</code>(정책 1,418개, 2026-09-21 수집분)</b>를 쓰고 있습니다. 10월 19일에 갱신한 데이터(<code>chroma_update_20261019.zip</code>)는 아직 적용하지 않았습니다.</li>
+    <li>시험 계정과 상담은 <b>찬울님 PC의 공용 Oracle DB</b>에 실제로 저장됩니다. 시험이 끝나면 만든 계정은 삭제해야 하니 시험한 이메일을 알려 주세요(또는 이메일을 <code>test-이름@example.invalid</code> 형태로 가입하면 구분하기 쉽습니다).</li>
+    <li>서버는 이 PC에서만 접속됩니다. 다른 PC에서 시험하려면 서버 실행 방법(5장)이 필요합니다.</li>
+  </ul>
+</div>
+
+<!-- ================= 3 ================= -->
+<h2>3. main 대비 추가된 기능</h2>
+<table>
+  <tr><th style="width:20%">기능</th><th style="width:48%">쉬운 설명</th><th>효과</th></tr>
+  <tr><td><span class="tag t-new">신규</span> 회원가입·로그인</td><td>이메일·비밀번호로 가입하고 로그인합니다. 비밀번호는 암호화(BCrypt)해서 저장하고, 로그인하면 24시간 쓸 수 있는 출입증(토큰)을 줍니다.</td><td>사용자별 기록 관리의 기반</td></tr>
+  <tr><td><span class="tag t-new">신규</span> 상담 기록 저장</td><td>로그인한 상태에서 한 질문과 AI의 답(후보 정책, 근거, 자료 링크)이 Oracle DB에 자동 저장됩니다. 상담 제목은 첫 질문으로 자동 정해집니다.</td><td>기기를 바꿔도 이어 볼 수 있음</td></tr>
+  <tr><td><span class="tag t-new">신규</span> 상담 복원·이어쓰기</td><td>왼쪽 "저장된 대화 기록"에서 상담을 누르면 대화를 그대로 불러오고, 이어서 질문하면 같은 상담에 기록됩니다.</td><td>이어 상담 가능</td></tr>
+  <tr><td><span class="tag t-new">신규</span> Gemini 키 암호 보관</td><td>사용자가 원하면 본인 Gemini 키를 서버에 등록해 둘 수 있습니다. 키는 AES-256으로 암호화해 DB에 저장하고 화면에는 다시 보여 주지 않습니다.</td><td>매번 키를 입력하지 않아도 됨</td></tr>
+  <tr><td><span class="tag t-new">신규</span> 로그인 보호</td><td>같은 이메일로 5번 연속 틀리면 10분간 로그인을 막습니다. 남의 상담 기록은 열람·수정·삭제할 수 없고, 남의 상담에 질문을 넣는 시도도 막습니다.</td><td>비밀번호 무차별 대입·타인 접근 차단</td></tr>
+  <tr><td><span class="tag t-chg">변경</span> AI 요청 경로</td><td>로그인한 상태에서는 질문이 "회원·기록 서버 → AI 서버"를 거쳐 가서 기록이 남습니다. 기록 서버에 문제가 생기면 <b>기록만 건너뛰고 검색·답변은 계속</b> 동작합니다.</td><td>기록 서버 장애가 서비스 중단으로 이어지지 않음</td></tr>
+  <tr><td><span class="tag t-chg">변경</span> 오류 안내</td><td>키가 없거나 틀렸을 때, AI 호출 한도를 넘었을 때 등의 안내가 로그인 상태에서도 그대로 나옵니다. 로그인 관련 오류(만료, 중복 가입, 잘못된 비밀번호 등) 안내도 추가됐습니다.</td><td>사용자가 원인을 알 수 있음</td></tr>
+  <tr><td><span class="tag t-chg">변경</span> 키 사용 순서</td><td>① 요청에 직접 실린 키(화면에서 입력) → ② 서버에 저장된 키 → ③ 없으면 서버 기본 AI.</td><td>어느 키로 AI가 호출되는지 명확</td></tr>
+  <tr><td><span class="tag t-info">유지</span> 게스트 모드</td><td>로그인하지 않으면 지금까지와 똑같이 쓰고, 상담 기록은 이 브라우저에만 저장됩니다.</td><td>기존 사용자 영향 없음</td></tr>
+</table>
+
+<h3>구조</h3>
+<svg viewBox="0 0 1000 200" width="100%" role="img" aria-label="구조도">
+  <rect x="10" y="70" width="140" height="70" rx="8" fill="#fff" stroke="#0b6b5f"/><text x="80" y="102" text-anchor="middle">브라우저</text><text x="80" y="120" text-anchor="middle">(React 화면)</text>
+  <rect x="200" y="70" width="140" height="70" rx="8" fill="#fff" stroke="#0b6b5f"/><text x="270" y="102" text-anchor="middle">Vite 개발 서버</text><text x="270" y="120" text-anchor="middle">:5173 (길 안내)</text>
+  <rect x="530" y="10" width="200" height="86" rx="8" fill="#e3f3f0" stroke="#0b6b5f"/><text x="630" y="38" text-anchor="middle" font-weight="bold">Spring Boot :8080 (신규)</text><text x="630" y="58" text-anchor="middle">회원·로그인(JWT)·키 암호화</text><text x="630" y="76" text-anchor="middle">상담 기록 · AI 중계</text>
+  <rect x="530" y="116" width="200" height="74" rx="8" fill="#fff" stroke="#0b6b5f"/><text x="630" y="146" text-anchor="middle" font-weight="bold">FastAPI :8000 (기존)</text><text x="630" y="166" text-anchor="middle">검색·리랭커·AI 답변</text>
+  <rect x="790" y="10" width="200" height="86" rx="8" fill="#fff" stroke="#475467"/><text x="890" y="40" text-anchor="middle" font-weight="bold">Oracle DB (신규)</text><text x="890" y="60" text-anchor="middle">찬울님 PC 172.31.57.141</text><text x="890" y="78" text-anchor="middle">회원 · API 키 · 상담</text>
+  <rect x="790" y="116" width="200" height="74" rx="8" fill="#fff" stroke="#475467"/><text x="890" y="146" text-anchor="middle" font-weight="bold">ChromaDB · Gemini/Qwen</text><text x="890" y="166" text-anchor="middle">정책 검색 DB, AI</text>
+  <line x1="150" y1="105" x2="200" y2="105" stroke="#0b6b5f"/>
+  <line x1="340" y1="90" x2="530" y2="50" stroke="#0b6b5f"/><text x="352" y="58" fill="#0b6b5f" font-size="11">로그인·기록·키·로그인 후 AI</text>
+  <line x1="340" y1="120" x2="530" y2="153" stroke="#0b6b5f"/><text x="352" y="156" fill="#0b6b5f" font-size="11">게스트 AI·지역·정책</text>
+  <line x1="630" y1="96" x2="630" y2="116" stroke="#0b6b5f"/>
+  <line x1="730" y1="53" x2="790" y2="53" stroke="#475467"/>
+  <line x1="730" y1="153" x2="790" y2="153" stroke="#475467"/>
+</svg>
+
+<!-- ================= 4 ================= -->
+<h2>4. main과 비교한 변경 내역</h2>
+<table>
+  <tr><th style="width:30%">영역</th><th style="width:12%">변경 파일</th><th>내용</th></tr>
+  <tr><td><b>Spring 서버</b> <code>app/memberJoin/</code></td><td>54개 (전부 신규)</td><td>Java 소스 36개(컨트롤러·서비스·보안·DB 매퍼), 테스트 7개(35개 시험), 설정, <b>Gradle 실행 도구</b>(<code>gradlew</code>)</td></tr>
+  <tr><td><b>프론트</b> <code>frontend/</code></td><td>11개</td><td>로그인·회원가입 창, 서버 상담 목록·복원, 로그인 상태에서 AI 요청 경로, 새 오류 안내, Vite 길 안내 설정, 복원 변환 테스트</td></tr>
+  <tr><td><b>Python 백엔드</b> <code>app/</code>, <code>tests/</code></td><td>0개</td><td><b>변경 없음.</b> 검색·리랭커·AI 답변·데이터는 main 그대로</td></tr>
+  <tr><td><b>문서</b> <code>docs/</code></td><td>6개</td><td>계약서(회원·기록 API와 오류 코드 추가), 회원·이력 설계서, Oracle 스키마(<code>oracle_schema.sql</code>), 점검 보고서, 이 문서</td></tr>
+  <tr><td>스크립트·설정</td><td>2개</td><td><code>scripts/e2e_member_flow.py</code>(종단 시험), <code>.gitignore</code>(빌드 캐시 제외)</td></tr>
+</table>
+<p class="small">합계 73개 파일, +5,628줄 / −37줄. 커밋은 찬울님 원본 1개(<code>f2406c0</code>) + 병합·수정 5개입니다.</p>
+
+<h3>새 서버(Spring)의 주소 목록</h3>
+<table>
+  <tr><th style="width:26%">주소</th><th style="width:12%">방식</th><th style="width:14%">로그인</th><th>역할</th></tr>
+  <tr><td><code>/api/auth/signup</code></td><td>POST</td><td>불필요</td><td>회원가입 (이메일 중복 시 409)</td></tr>
+  <tr><td><code>/api/auth/login</code></td><td>POST</td><td>불필요</td><td>로그인과 토큰 발급 (5회 실패 시 429)</td></tr>
+  <tr><td><code>/api/auth/me</code></td><td>GET</td><td>필요</td><td>내 프로필</td></tr>
+  <tr><td><code>/api/auth/logout</code></td><td>POST</td><td>필요</td><td>로그아웃(토큰은 화면에서 삭제)</td></tr>
+  <tr><td><code>/api/users/api-key</code> (+ <code>/status</code>)</td><td>PUT·GET·DELETE</td><td>필요</td><td>Gemini 키 등록·상태·삭제(키 값은 응답에 없음)</td></tr>
+  <tr><td><code>/api/history/sessions</code></td><td>GET·POST</td><td>필요</td><td>내 상담 목록·새 상담</td></tr>
+  <tr><td><code>/api/history/sessions/{id}</code> (+ <code>/title</code>)</td><td>GET·DELETE·PATCH</td><td>필요</td><td>상담 상세(대화 포함)·삭제·제목 수정(내 것만)</td></tr>
+  <tr><td><code>/api/ai/sessions/{id}/search</code></td><td>POST</td><td>필요</td><td>정책 검색(AI 서버 중계 + 기록 저장)</td></tr>
+  <tr><td><code>/api/ai/sessions/{id}/policies/{policy}/ask</code></td><td>POST</td><td>필요</td><td>정책 질문(AI 서버 중계 + 기록 저장, "자주 묻는 질문" 유형 전달)</td></tr>
+</table>
+
+<!-- ================= 5 ================= -->
+<h2>5. 찬울님 원본 대비 수정한 것 (연결하면서 고친 문제)</h2>
+<p>찬울님 브랜치를 main에 그대로 붙이면 동작하지 않거나 위험한 부분이 있어 아래를 고쳤습니다. 자세한 점검 내용은 <code>chanul_integration_review_2026-10-19.html</code>에 있습니다.</p>
+<table>
+  <tr><th style="width:30%">문제</th><th>고친 내용</th></tr>
+  <tr><td><span class="tag t-fix">수정</span> 대화 저장이 항상 실패</td><td>DB는 발신자를 대문자(<code>USER</code>/<code>ASSISTANT</code>)만 허용하는데 코드는 소문자로 저장하고 있었습니다. 대문자로 저장하고 화면에는 소문자로 응답합니다.</td></tr>
+  <tr><td><span class="tag t-fix">수정</span> 남의 상담에 접근 가능</td><td>다른 사용자의 상담 ID로 AI를 부르거나 기록을 쓸 수 있었습니다. AI 호출 전에 소유자를 확인합니다(남의 것 403, 없는 것 404).</td></tr>
+  <tr><td><span class="tag t-fix">수정</span> AI 오류 안내가 사라짐</td><td>키 오류·한도 초과 코드가 모두 "서버 오류"로 바뀌던 것을 그대로 전달하도록 했습니다. 실제 연결에서만 드러난 문제 2건(401 본문 유실, HTTP/2 업그레이드 거절)도 함께 해결했습니다.</td></tr>
+  <tr><td><span class="tag t-fix">수정</span> AI 서버 무응답 시 무한 대기</td><td>연결 3초·응답 60초 제한을 걸고, 초과 시 503/504로 안내합니다.</td></tr>
+  <tr><td><span class="tag t-fix">수정</span> DB 접속 정보가 개인 PC용</td><td>환경변수(<code>DB_URL</code>, <code>DB_USERNAME</code>, <code>DB_PASSWORD</code>)로 받고 기본 주소를 공용 Oracle로 바꿨습니다.</td></tr>
+  <tr><td><span class="tag t-fix">수정</span> 오류 코드가 계약서와 다름</td><td>401 <code>UNAUTHORIZED</code>, 403 <code>FORBIDDEN</code>, 401 <code>INVALID_CREDENTIALS</code>, 409 <code>USER_ALREADY_EXISTS</code>, 404 <code>SESSION_NOT_FOUND</code>로 정렬했습니다.</td></tr>
+  <tr><td><span class="tag t-fix">보강</span> 보안·안정성</td><td>로그인 5회 실패 제한, 기본 임시 계정 자동 생성 끄기, API 키 암호화 마스터 키 길이 검증, 기록 저장 실패가 답변을 막지 않게 처리.</td></tr>
+  <tr><td><span class="tag t-fix">추가</span> 상담 복원</td><td>찬울님 원본은 상담을 눌러도 지역·나이만 복원됐습니다. 대화 전체를 복원하고 이어쓰기까지 되도록 만들었습니다.</td></tr>
+  <tr><td><span class="tag t-fix">정리</span> 저장소</td><td>빌드 캐시 17개 파일 제거, <code>gradlew</code> 추가(Gradle을 따로 설치하지 않고 <code>./gradlew test</code>로 실행).</td></tr>
+</table>
+
+<h3>서버 직접 실행 방법 (다른 PC에서 시험할 때)</h3>
+<table>
+  <tr><th style="width:20%">서버</th><th>명령 (프로젝트 폴더 기준)</th></tr>
+  <tr><td>AI 서버</td><td><code>python -m uvicorn app.api:app --port 8000</code> (키 없이 쓰려면 서버 기본 AI 설정 필요: <code>WELFAREONE_ALLOW_SERVER_KEY=true</code> 또는 <code>LLM_PROVIDER=qwen</code>)</td></tr>
+  <tr><td>회원·기록 서버</td><td><code>cd app/memberJoin</code> → 환경변수 <code>DB_PASSWORD</code> 설정 → <code>./gradlew bootRun</code> (JDK 17 이상, 같은 네트워크에서 Oracle(172.31.57.141:1521)에 접속 가능해야 함)</td></tr>
+  <tr><td>화면</td><td><code>cd frontend</code> → <code>npm install</code> → <code>VITE_USE_MOCK=false</code> 설정(<code>.env.local</code>) → <code>npm run dev</code> → 5173 접속</td></tr>
+</table>
+
+<!-- ================= 6 ================= -->
+<h2>6. 테스트 현황</h2>
+<table>
+  <tr><th style="width:26%">구분</th><th style="width:14%">결과</th><th>내용</th></tr>
+  <tr><td>Java 단위·HTTP 테스트</td><td>35개 통과</td><td>AI 중계(소유자 검증·키 순서·기록), FastAPI 호출(오류 코드 보존·시간 초과), 로그인 제한, 오류 코드, 암호화, 실제 HTTP 서버를 띄운 통신 테스트</td></tr>
+  <tr><td>프론트 테스트·빌드</td><td>47개 통과</td><td>대화 복원 변환 8개 포함</td></tr>
+  <tr><td>Python 테스트</td><td>186개 통과</td><td>기존과 동일(5개는 환경상 건너뜀)</td></tr>
+  <tr><td><b>종단 시험</b> <code>scripts/e2e_member_flow.py</code></td><td>36/36 통과</td><td>실제 Oracle·FastAPI·Gemini로 가입 → 로그인 → 검색·질문 → 기록 → 오류 → 정리. 시험 계정만 만들고 지웠으며 DB 건수가 시작 전과 같음을 확인</td></tr>
+  <tr><td>브라우저 화면 시험</td><td>통과</td><td>가입 → 질문 → 기록 자동 등록 → 새로고침 후 복원 → 같은 상담에 이어서 질문</td></tr>
+</table>
+
+<!-- ================= 7 ================= -->
+<h2>7. 알려진 한계와 앞으로 할 일</h2>
+<div class="box warn">
+  <ul>
+    <li><b>비밀값 교체 보류</b> — DB 비밀번호, 로그인 토큰 서명 키, API 키 암호화 마스터 키가 저장소 설정 파일에 들어 있습니다. 팀 내부 공유 범위라 지금은 유지하기로 했으며, 외부 공개나 운영 전에 반드시 교체해야 합니다(교체하면 이미 저장된 Gemini 키는 재등록이 필요).</li>
+    <li><b>공용 Oracle이 찬울님 개인 PC</b> — PC가 꺼지거나 네트워크가 바뀌면 로그인·기록이 멈춥니다. 검색·AI는 계속 동작하는 구조지만, 운영에는 별도 서버로 옮겨야 합니다.</li>
+    <li><b>키 서버 저장 방침 미정</b> — 서버가 사용자 키를 저장하는 방식이 계약서 제안 8-1("서버는 사용자 키를 저장하지 않는다")과 충돌합니다. 팀 결정이 필요합니다.</li>
+    <li><b>상담 기록이 두 곳</b> — 브라우저 기록과 Oracle 기록이 사이드바에 따로 보이고, 서버 상담을 열면 브라우저 기록에도 사본이 남을 수 있습니다. 기준을 정해야 합니다.</li>
+    <li>복원한 대화에서는 AI 관련도 판정 결과가 저장되지 않아 "관련도 낮음" 표시가 거리 기준으로 대체됩니다.</li>
+    <li>로그인 시도 제한은 서버 1대 기준(메모리)이라 서버를 재시작하면 초기화됩니다. 토큰은 브라우저에 저장되며 24시간 후 만료됩니다.</li>
+    <li>검색 DB 갱신분(2026-10-19 수집)은 아직 서버에 적용하지 않았습니다.</li>
+  </ul>
+</div>
+
+<!-- ================= 8 ================= -->
+<h2>8. 병합 상태</h2>
+<table>
+  <tr><th style="width:18%">커밋</th><th>내용</th></tr>
+  <tr><td><code>f2406c0</code></td><td>찬울님 원본 "version01" (Spring 서버, 로그인 창, Oracle 스키마·설계 문서)</td></tr>
+  <tr><td><code>420c852</code></td><td>찬울님 브랜치를 main과 병합(충돌 1곳 해결) + 치명 문제 수정</td></tr>
+  <tr><td><code>b9751cd</code></td><td>Java 테스트 24개와 Gradle 실행 도구 추가</td></tr>
+  <tr><td><code>928d9c7</code></td><td>오류 코드 정렬, 로그인 시도 제한, 상담 대화 복원</td></tr>
+  <tr><td><code>c9e1999</code></td><td>연동 점검 보고서</td></tr>
+  <tr><td><code>3603b55</code></td><td>실제 연결에서 드러난 HTTP 문제 수정, 종단 시험 스크립트, 보고서 갱신</td></tr>
+</table>
+<p class="small">GitHub에는 <code>420c852</code>~<code>b9751cd</code>까지 올라가 있고, 이후 3개 커밋(<code>928d9c7</code>, <code>c9e1999</code>, <code>3603b55</code>)은 이 PC에만 있습니다. main에는 아직 병합되지 않았습니다.</p>
+
+<p class="small">작성: Claude Code · 근거: <code>git diff origin/main..HEAD</code>, <code>./gradlew test</code>, <code>scripts/e2e_member_flow.py</code>, 브라우저 시험(2026-10-21)</p>
+
+</div>
+</body>
+</html>

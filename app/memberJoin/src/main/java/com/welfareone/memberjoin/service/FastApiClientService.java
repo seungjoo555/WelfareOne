@@ -12,7 +12,10 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.net.ConnectException;
 import java.net.SocketTimeoutException;
+import java.net.http.HttpConnectTimeoutException;
+import java.net.http.HttpTimeoutException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -77,11 +80,38 @@ public class FastApiClientService {
             log.warn("FastAPI {} 오류 응답: {}", what, e.getStatusCode().value());
             throw new UpstreamApiException(e.getStatusCode().value(), parseErrorBody(e));
         } catch (ResourceAccessException e) {
-            boolean timeout = e.getCause() instanceof SocketTimeoutException;
-            log.error("FastAPI {} 호출 실패({}): {}", what, timeout ? "시간 초과" : "연결 실패", e.getMessage());
+            // 연결 단계 실패(거부·연결 시간 초과)는 503, 연결 후 응답이 늦은 경우는 504.
+            // Spring은 원인 예외를 이어 주지 않는 경우가 있어(실측) 메시지도 함께 본다. JDK HttpClient의 메시지:
+            // 응답 시간 초과 "Request timed out", 연결 시간 초과 "HTTP connect timed out".
+            String message = String.valueOf(e.getMessage()).toLowerCase();
+            boolean connectTimeout = message.contains("connect timed out") || hasCause(e, HttpConnectTimeoutException.class);
+            boolean connectFailure = connectTimeout || hasCause(e, ConnectException.class);
+            boolean timeout = !connectFailure && (message.contains("timed out") || hasCause(e, HttpTimeoutException.class) || hasCause(e, SocketTimeoutException.class));
+            log.error("FastAPI {} 호출 실패({}): {}", what, timeout ? "시간 초과" : "연결 실패", causeChain(e));
             throw UpstreamApiException.unavailable(timeout ? 504 : 503,
                     timeout ? "AI 서버 응답 시간이 초과되었습니다." : "AI 서버에 연결하지 못했습니다.");
         }
+    }
+
+    /** 로그용: 원인 사슬의 예외 종류만 이어 붙인다(요청 본문·키는 포함하지 않는다). */
+    private static String causeChain(Throwable error) {
+        StringBuilder chain = new StringBuilder();
+        for (Throwable t = error; t != null; t = t.getCause()) {
+            if (chain.length() > 0) {
+                chain.append(" <- ");
+            }
+            chain.append(t.getClass().getSimpleName());
+        }
+        return chain.toString();
+    }
+
+    private static boolean hasCause(Throwable error, Class<? extends Throwable> type) {
+        for (Throwable t = error; t != null; t = t.getCause()) {
+            if (type.isInstance(t)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Map<String, Object> parseErrorBody(RestClientResponseException e) {

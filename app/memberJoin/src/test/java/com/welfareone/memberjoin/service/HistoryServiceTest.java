@@ -3,6 +3,7 @@ package com.welfareone.memberjoin.service;
 import com.welfareone.memberjoin.domain.ChatMessage;
 import com.welfareone.memberjoin.domain.ChatSession;
 import com.welfareone.memberjoin.dto.SessionDetailDto;
+import com.welfareone.memberjoin.exception.ApiException;
 import com.welfareone.memberjoin.mapper.ChatMessageMapper;
 import com.welfareone.memberjoin.mapper.ChatSessionMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -66,8 +67,10 @@ class HistoryServiceTest {
     void assertSessionOwnerRejectsOtherUsersAndUnknownSessions() {
         when(sessionMapper.findById("s1")).thenReturn(ChatSession.builder().sessionId("s1").userId(7L).build());
 
-        assertThatThrownBy(() -> service.assertSessionOwner("s1", 8L)).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> service.assertSessionOwner("nope", 7L)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.assertSessionOwner("s1", 8L))
+                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getCode()).isEqualTo("FORBIDDEN"));
+        assertThatThrownBy(() -> service.assertSessionOwner("nope", 7L))
+                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getCode()).isEqualTo("SESSION_NOT_FOUND"));
         verify(messageMapper, never()).insertMessage(any());
     }
 }

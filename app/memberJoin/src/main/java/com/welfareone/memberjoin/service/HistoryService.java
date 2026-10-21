@@ -2,6 +2,7 @@ package com.welfareone.memberjoin.service;
 
 import com.welfareone.memberjoin.domain.ChatMessage;
 import com.welfareone.memberjoin.domain.ChatSession;
+import com.welfareone.memberjoin.exception.ApiException;
 import com.welfareone.memberjoin.dto.ChatMessageDto;
 import com.welfareone.memberjoin.dto.CreateSessionRequest;
 import com.welfareone.memberjoin.dto.SessionDetailDto;
@@ -53,10 +54,7 @@ public class HistoryService {
 
     @Transactional(readOnly = true)
     public SessionDetailDto getSessionDetail(String sessionId, Long userId) {
-        ChatSession session = sessionMapper.findById(sessionId);
-        if (session == null || !session.getUserId().equals(userId)) {
-            throw new IllegalArgumentException("상담 세션을 찾을 수 없거나 접근 권한이 없습니다.");
-        }
+        ChatSession session = requireOwnedSession(sessionId, userId);
 
         List<ChatMessageDto> messages = messageMapper.findBySessionIdOrderByCreatedAtAsc(sessionId).stream()
                 .map(this::toMessageDto)
@@ -70,29 +68,31 @@ public class HistoryService {
 
     @Transactional
     public void deleteSession(String sessionId, Long userId) {
-        ChatSession session = sessionMapper.findById(sessionId);
-        if (session == null || !session.getUserId().equals(userId)) {
-            throw new IllegalArgumentException("상담 세션을 찾을 수 없거나 권한이 없습니다.");
-        }
+        requireOwnedSession(sessionId, userId);
         sessionMapper.deleteById(sessionId);
     }
 
     @Transactional
     public void updateSessionTitle(String sessionId, Long userId, String newTitle) {
-        ChatSession session = sessionMapper.findById(sessionId);
-        if (session == null || !session.getUserId().equals(userId)) {
-            throw new IllegalArgumentException("상담 세션을 찾을 수 없거나 권한이 없습니다.");
-        }
+        requireOwnedSession(sessionId, userId);
         sessionMapper.updateSessionTitle(sessionId, newTitle);
     }
 
-    /** 세션이 로그인 사용자의 것인지 확인한다. 아니면 IllegalArgumentException(400). AI 호출 전에 호출해 남의 세션에 기록이 쓰이지 않게 한다. */
+    /** 세션이 로그인 사용자의 것인지 확인한다. 없으면 404(SESSION_NOT_FOUND), 남의 세션이면 403(FORBIDDEN). AI 호출 전에 호출해 남의 세션에 기록이 쓰이지 않게 한다. */
     @Transactional(readOnly = true)
     public void assertSessionOwner(String sessionId, Long userId) {
+        requireOwnedSession(sessionId, userId);
+    }
+
+    private ChatSession requireOwnedSession(String sessionId, Long userId) {
         ChatSession session = sessionMapper.findById(sessionId);
-        if (session == null || !session.getUserId().equals(userId)) {
-            throw new IllegalArgumentException("상담 세션을 찾을 수 없거나 접근 권한이 없습니다.");
+        if (session == null) {
+            throw ApiException.sessionNotFound();
         }
+        if (!session.getUserId().equals(userId)) {
+            throw ApiException.forbidden();
+        }
+        return session;
     }
 
     @Transactional
