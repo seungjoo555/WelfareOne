@@ -55,9 +55,9 @@ class AiProxyControllerTest {
 
     @Test
     void foreignSessionIsRejectedBeforeAnyAiCallOrWrite() {
-        doThrow(new IllegalArgumentException("접근 권한이 없습니다.")).when(history).assertSessionOwner("s1", 7L);
+        doThrow(com.welfareone.memberjoin.exception.ApiException.forbidden()).when(history).assertSessionOwner("s1", 7L);
 
-        assertThatThrownBy(() -> controller.search("s1", 7L, null, searchBody)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> controller.search("s1", 7L, null, searchBody)).isInstanceOf(com.welfareone.memberjoin.exception.ApiException.class);
 
         verify(fastApi, never()).searchPolicies(any(), any(), any(), any(), any());
         verify(history, never()).saveMessage(any(), any(), any(), any(), any(), any(), any(), any(), any());

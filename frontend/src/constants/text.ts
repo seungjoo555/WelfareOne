@@ -12,6 +12,12 @@ export const ERROR_MESSAGES: Record<AppErrorCode, string> = {
   INVALID_API_KEY: "입력한 Gemini API 키를 사용할 수 없어요. 'API 키' 버튼에서 키를 확인한 뒤 다시 질문해 주세요.",
   DATABASE_ERROR: "정책 데이터를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.",
   INTERNAL_ERROR: "서버에서 문제가 발생했어요. 잠시 후 다시 시도해 주세요.",
+  UNAUTHORIZED: "로그인이 만료됐어요. 다시 로그인해 주세요.",
+  FORBIDDEN: "이 상담에 접근할 수 없어요.",
+  INVALID_CREDENTIALS: "이메일 또는 비밀번호가 올바르지 않아요.",
+  USER_ALREADY_EXISTS: "이미 가입된 이메일이에요.",
+  SESSION_NOT_FOUND: "상담 기록을 찾을 수 없어요. 새 상담으로 시작해 주세요.",
+  TOO_MANY_LOGIN_ATTEMPTS: "로그인 시도가 너무 많아요. 잠시 후 다시 시도해 주세요.",
   NETWORK_ERROR: "서버에 연결하지 못했어요. 네트워크와 서버 실행 상태를 확인해 주세요.",
   TIMEOUT: "응답이 너무 오래 걸리고 있어요. 잠시 후 다시 시도해 주세요.",
 };

@@ -6,6 +6,7 @@ import com.welfareone.memberjoin.dto.AuthResponse;
 import com.welfareone.memberjoin.dto.LoginRequest;
 import com.welfareone.memberjoin.dto.SignUpRequest;
 import com.welfareone.memberjoin.dto.UserProfileDto;
+import com.welfareone.memberjoin.exception.ApiException;
 import com.welfareone.memberjoin.mapper.UserApiKeyMapper;
 import com.welfareone.memberjoin.mapper.UserMapper;
 import com.welfareone.memberjoin.util.JwtTokenProvider;
@@ -22,11 +23,12 @@ public class AuthService {
     private final UserApiKeyMapper userApiKeyMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
+    private final LoginAttemptService loginAttempts;
 
     @Transactional
     public AuthResponse signUp(SignUpRequest request) {
         if (userMapper.countByEmail(request.getEmail()) > 0) {
-            throw new IllegalArgumentException("이미 가입된 이메일 계정입니다.");
+            throw ApiException.userAlreadyExists();
         }
 
         User user = User.builder()
@@ -62,10 +64,14 @@ public class AuthService {
 
     @Transactional(readOnly = true)
     public AuthResponse login(LoginRequest request) {
+        // 같은 이메일로 연속 실패하면 잠시 막는다(무차별 대입 방지)
+        loginAttempts.checkAllowed(request.getEmail());
         User user = userMapper.findByEmail(request.getEmail());
         if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-            throw new IllegalArgumentException("이메일 또는 비밀번호가 올바르지 않습니다.");
+            loginAttempts.recordFailure(request.getEmail());
+            throw ApiException.invalidCredentials();
         }
+        loginAttempts.reset(request.getEmail());
 
         String token = jwtTokenProvider.createToken(user.getUserId(), user.getEmail(), user.getRole());
         UserApiKey key = userApiKeyMapper.findByUserId(user.getUserId());
@@ -91,7 +97,7 @@ public class AuthService {
     public UserProfileDto getProfile(Long userId) {
         User user = userMapper.findById(userId);
         if (user == null) {
-            throw new IllegalArgumentException("사용자를 찾을 수 없습니다.");
+            throw ApiException.unauthorized();
         }
         UserApiKey key = userApiKeyMapper.findByUserId(userId);
 

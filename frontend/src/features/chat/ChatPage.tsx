@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { askPolicy, askPolicyInSession, searchPolicies, searchPoliciesInSession } from "../../api/policies";
 import { ApiClientError, toErrorCode } from "../../api/client";
+import { conversationFromServer } from "../../utils/serverHistory";
 import { USE_MOCK } from "../../config";
 import { DISCLAIMER, SERVICE_NAME } from "../../constants/text";
 import type { ConversationState, Action } from "../../state/conversation";
@@ -79,16 +80,25 @@ export function ChatPage({ state, dispatch, history }: Props) {
     }
   };
 
-  // 기록 서버 경로로 보냈다가 로그인 토큰이 만료·거부되면(키 오류가 아닌 401/403) 로그아웃 처리하고 직접 경로로 한 번 더 보낸다.
+  // 기록 서버 경로로 보냈다가 서버 쪽 사유로 거절되면 FastAPI 직접 호출로 한 번 더 보낸다(기록만 건너뛰고 검색은 계속된다).
+  // - UNAUTHORIZED: 로그인 토큰이 만료·거부됨 → 로그아웃 처리
+  // - SESSION_NOT_FOUND / FORBIDDEN: 기록 서버의 상담 세션을 쓸 수 없음 → 세션 연결을 끊고 다음 질문에서 새로 만든다
+  // 키 오류(API_KEY_REQUIRED, INVALID_API_KEY)나 한도 초과는 FastAPI가 준 오류이므로 그대로 보여 준다.
   const viaServer = async <T,>(run: () => Promise<T>, direct: () => Promise<T>): Promise<T> => {
     try {
       return await run();
     } catch (error) {
-      const keyError = error instanceof ApiClientError && (error.code === "API_KEY_REQUIRED" || error.code === "INVALID_API_KEY");
-      if (error instanceof ApiClientError && (error.status === 401 || error.status === 403) && !keyError) {
-        removeAuthToken();
-        setUser(null);
-        return direct();
+      if (error instanceof ApiClientError) {
+        if (error.code === "UNAUTHORIZED") {
+          removeAuthToken();
+          setUser(null);
+          setServerSession(null);
+          return direct();
+        }
+        if (error.code === "SESSION_NOT_FOUND" || error.code === "FORBIDDEN") {
+          setServerSession(null);
+          return direct();
+        }
       }
       throw error;
     }
@@ -143,21 +153,14 @@ export function ChatPage({ state, dispatch, history }: Props) {
     }
   };
 
+  // 사이드바에서 서버 상담을 고르면 저장된 대화를 불러오고, 이어서 질문하면 같은 세션에 기록한다.
   const handleSelectServerSession = async (sessionId: string) => {
     try {
       const detail = await fetchServerSessionDetail(sessionId);
+      const conversation = conversationFromServer(detail);
+      dispatch({ type: "LOAD", conversation });
+      setServerSession({ conversationId: conversation.id, sessionId });
       setActiveServerSessionId(sessionId);
-      // 세션의 지역 및 나이 설정
-      if (detail.session) {
-        dispatch({
-          type: "START",
-          region: {
-            level1: detail.session.region_level1,
-            level2: detail.session.region_level2 || "",
-          },
-          age: detail.session.age,
-        });
-      }
       setSidebarOpen(false);
     } catch (e: any) {
       alert("상담 기록 로드 실패: " + e.message);
