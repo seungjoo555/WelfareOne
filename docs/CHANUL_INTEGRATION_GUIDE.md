@@ -12,7 +12,8 @@
 | PR [#9](https://github.com/JMT-maker/WelfareOne/pull/9) 점검 보고서 | #8 안에 갱신본이 포함되어 있어 중복 — 닫아도 됨 |
 | 완료된 개선(#8에 포함) | 오류 코드 계약서 17.4 정렬, 로그인 5회 실패 시 10분 제한(429), 기본 로그인 계정 비활성화, 서버 상담 대화 복원, JDK HTTP/1.1 클라이언트 |
 | 검증 결과(작성자 PC) | Python 186개, 프론트 47개, Java 35개, 종단 시험 `scripts/e2e_member_flow.py` 36/36(실제 Oracle·FastAPI·Gemini) |
-| 이 문서 이후 남은 일 | 8장 개선 후보, 계약서 `function_contracts.md` 정리(주소·가입 응답 형식), 외부 공개 전 비밀값 교체 |
+| 이 PR(#10)에서 추가로 고친 것 | 다크모드 로그인 창 입력 글자 안 보임, 로그인 중 대화가 브라우저에 남던 문제, 로그인 제한의 계정 잠금·메모리 증가 (10장 K·L·M) |
+| 남은 일 | 13장 개선 방향 — 계약서 `function_contracts.md` 정리, 외부 공개 전 비밀값 교체 등 |
 
 종단 시험은 `scripts/e2e_member_flow.py`가 자동으로 수행한다(시험 계정 생성 → 검증 → 정리, 시작·종료 건수 비교). 이 문서의 4~5장은 같은 흐름을 **손으로 확인**하고 싶을 때 쓰는 절차다. 상세한 변경 요약은 `docs/overview/integration_summary_2026-10-21.html`을 본다.
 
@@ -40,6 +41,7 @@ Gradle은 따로 설치하지 않는다. `app/memberJoin`에서 `.\gradlew.bat`�
 | `AES_MASTER_KEY` | 파일의 기존 값 | 32바이트 이상 |
 | `FASTAPI_BASE_URL` | `http://localhost:8000` | |
 | `FASTAPI_CONNECT_TIMEOUT_MS` / `FASTAPI_READ_TIMEOUT_MS` | 3000 / 60000 | |
+| `FORWARD_HEADERS_STRATEGY` | `none` | 역방향 프록시(Nginx 등) 뒤에서 실제 클라이언트 IP를 쓰려면 `native`. 로그인 시도 제한이 IP를 쓴다. 프록시 없이 직접 노출할 때는 `none`(헤더로 IP를 속이지 못함) |
 
 비밀번호는 문서·명령 기록·커밋에 남기지 않는다. 입력은 이렇게 한다.
 
@@ -172,8 +174,8 @@ conn.close()
 
 - 서버 저장 Gemini 키는 **화면에서 등록할 방법이 없다**. `saveServerApiKey`(`frontend/src/api/auth.ts`)가 정의만 되어 있고 어디서도 호출되지 않는다. 지금은 브라우저에 입력한 키가 우선 사용된다. 서버 저장 키를 쓰려면 `PUT /api/users/api-key`를 직접 호출하거나 화면을 추가해야 한다.
 - 키 우선순위: 요청 헤더 키 > 서버 저장 키 > 없음(FastAPI가 서버 기본 AI 또는 401 `API_KEY_REQUIRED`).
-- **로그인 중의 대화도 브라우저(localStorage)에 저장되고, 로그아웃해도 남는다.** 로그아웃 후 게스트 사이드바에 방금 상담이 보이고 화면의 대화도 그대로다(9장 참고). 공용 PC에서는 사용 후 사이드바의 삭제를 직접 눌러야 한다.
-- 로그인 실패 제한은 서버 메모리 기반이라 재시작하면 초기화되고, 서버를 여러 대로 늘리면 공유되지 않는다.
+- 로그인 중의 대화는 브라우저(localStorage)에 복사하지 않는다(서버가 기준 저장소). 로그아웃하면 화면을 비우고, 서버에서 불러와 복사됐던 `server-…` 상담도 지운다. **이전 버전에서 로그인 중에 만들어 이미 저장된 일반 대화는 구분할 수 없어 자동으로 지우지 않는다** — 공용 PC에서는 사이드바에서 직접 삭제한다.
+- 로그인 실패 제한은 서버 메모리 기반이라 재시작하면 초기화되고, 서버를 여러 대로 늘리면 공유되지 않는다. 한도: 같은 이메일+같은 IP 5회, 같은 이메일 전체 30회, 같은 IP 전체 20회(각 10분). Vite 개발 프록시를 거치면 모든 요청이 `127.0.0.1`로 보여 IP 한도(20회)가 개발자 전체에 공유된다.
 - 프론트 mock 모드(`npm run dev` 기본)에서는 로그인·가입이 동작하지 않는다. 로그인 시험은 `VITE_USE_MOCK=false`와 Spring이 필요하다.
 
 ## 8. 문제 해결
@@ -200,7 +202,8 @@ conn.close()
 - Spring 컨트롤러: `AuthController`(`/api/auth/signup|login|me`), `ApiKeyController`(`/api/users/api-key[/status]`), `HistoryController`(`/api/history/sessions[/{id}[/title]]`), `AiProxyController`(`/api/ai/sessions/{id}/search`, `/policies/{pid}/ask`).
 - 보안: JWT(24시간, stateless), 가입·로그인만 인증 면제, CORS는 `localhost:5173`/`127.0.0.1:5173`만.
 - 오류 형식: `{"error":{"code","message","details"}}` — FastAPI 오류는 상태·본문 그대로 전달.
-- 브라우저 기록: `useConversationHistory`는 로그인 여부와 관계없이 질문이 있는 모든 대화를 localStorage에 저장한다. 로그아웃(`ChatPage.tsx`)은 토큰과 서버 목록만 지우고 이 기록과 화면 상태는 그대로 둔다. 서버에서 불러온 상담(`server-<세션ID>`)도 같은 방식으로 복사된다.
+- 브라우저 기록: `useConversationHistory`는 로그인 토큰이 있으면 대화를 localStorage에 저장하지 않는다. 로그아웃(`ChatPage.tsx`의 `handleLogout`)은 토큰·서버 목록·화면 대화를 비우고 `purgeServerCopies()`로 서버에서 온 복사본을 지운다.
+- 로그인 창 스타일: `styles.css`의 `.portal-*` 클래스와 앱 테마 변수(`--surface/--text/--border/--bg/--muted/--accent/--danger/--warn-*`)만 쓴다. 정의되지 않은 변수나 하드코딩 색을 쓰면 `tests/cssVars.test.ts`가 실패한다.
 
 ## 10. 개선 작업 현황
 
@@ -211,8 +214,9 @@ conn.close()
 | 완료 | C. 서버 상담 대화 복원 | `frontend/src/utils/serverHistory.ts` |
 | 완료 | D. 기본 보안 계정 비활성화 | `application.yml`의 autoconfigure exclude |
 | 완료 | E. 로그인 실패 횟수 제한 | `LoginAttemptService` (같은 이메일 5회/10분, 메모리 기반) |
-| 열림 | K. 로그아웃·로그인 중 브라우저 기록 처리 | 9장. 로그인 중에는 localStorage에 저장하지 않거나, 로그아웃 때 서버에서 온 상담을 지우기 |
-| 열림 | L. 로그인 제한의 부작용 | 남의 이메일로 5회 실패시키면 그 계정이 10분간 잠김. 실패 기록 맵은 만료 항목을 지우지 않아 임의 이메일로 계속 늘어남. IP 기준 제한이나 주기적 정리 검토 |
+| 완료 | K. 로그아웃·로그인 중 브라우저 기록 처리 | 로그인 중에는 브라우저에 저장하지 않고, 로그아웃 때 화면과 서버 복사본을 비움 |
+| 완료 | L. 로그인 제한의 부작용 | 이메일+IP 기준 5회, 이메일 30회, IP 20회로 나누고(남의 IP가 내 계정을 잠그지 못함), 조회만으로 항목을 만들지 않으며, 항목이 1,000개를 넘으면 만료분 정리 |
+| 완료 | M. 다크모드 로그인 창 | 입력 글자 대비 1.31:1 → 정상. 모달·사이드바 인라인 스타일을 테마 변수 기반 클래스로 교체, 오버레이 위치(fixed)·모바일 1단 정리 |
 | 열림 | F. 서버 키 등록 UI 또는 방침 확정 | `ApiKeyDialog.tsx`, `contract_update_proposal.md` 8-1과 충돌 |
 | 열림 | G. 상담 기록 기준 결정 | 로그인 시 사이드바는 Oracle 목록만 보임. 게스트 기록 이전 없음 |
 | 열림 | H. 지역·정책 상세·설정 경로 | Spring 한 곳으로 모으면 로그인 때문에 막힘. 운영 프록시(Nginx 등)에서 경로 분기 유지 권장 |
@@ -235,3 +239,19 @@ conn.close()
 
 현재 합의: 팀 내부에서만 공유하므로 당분간 유지. 다음 시점에는 **반드시** 교체한다 — 저장소를 팀 밖으로 공개/공유할 때, 팀원이 바뀔 때.
 교체 대상은 DB 비밀번호, `JWT_SECRET`, `AES_MASTER_KEY`이다. 순서: 새 값 생성 → 환경변수 적용 → Spring 재시작 → AES 키를 바꿨다면 `USER_API_KEYS`의 저장 키(2건)를 재등록 → 옛 값 폐기. 이미 Git 이력에 올라간 값은 교체로 무효화된다.
+
+## 13. 개선 방향
+
+우선순위 순서. 앞의 것이 뒤의 것의 전제가 되는 경우가 많다.
+
+| 시점 | 방향 | 이유 / 완료 기준 |
+|---|---|---|
+| 병합 직후 | **`docs/function_contracts.md`를 구현에 맞게 정리** (별도 PR) | `/sessions` 계열 주소(실제는 `/api/history/sessions`, `/api/ai/sessions/{id}/…`)·가입 응답(토큰 포함)이 실제와 다르고, 구현되지 않은 `/sessions/{id}/messages`, `/eligibility`가 적혀 있다. 팀 합의 문서이므로 팀 확인 후 반영 |
+| 외부 공개 전 (필수) | **JWT 키·AES 마스터 키·DB 비밀번호 교체** (12장 순서) | 지금은 기본값이 저장소와 Git 이력에 있다. 팀 안에서만 쓰는 동안만 유예 |
+| 단기 | **서버 저장 Gemini 키 방침 확정** | 서버 암호화 저장은 `contract_update_proposal.md` 8-1("서버는 키를 저장하지 않는다")과 충돌한다. (a) 저장을 허용하고 등록 화면을 만들거나(`saveServerApiKey`를 연결), (b) 브라우저 키만 쓰고 서버 저장 기능을 제거한다 |
+| 단기 | **로그인 중 상담 기록의 기준 확정** | 로그인하면 사이드바가 Oracle 목록만 보인다. 게스트 때 만든 기록을 계정으로 옮길지, 로그인 중에도 보여 줄지 정한다. 서버 상담에는 제목 수정·삭제 UI가 없다 |
+| 중기 | **공용 DB를 개인 PC에서 서버로 이전** | 찬울님 PC가 꺼지면 로그인·기록 전체가 멈춘다. 이전 시 `DB_URL`만 바꾸면 된다 |
+| 중기 | **운영 경로 설계** | 지금은 Vite 개발 프록시가 `/api/auth·users·history·ai`를 Spring, 나머지를 FastAPI로 나눈다. 운영에서는 Nginx 등에서 같은 분기를 만들고 `FORWARD_HEADERS_STRATEGY=native`를 켠다. CORS 허용 주소(`localhost:5173`)를 설정값으로 뺀다 |
+| 중기 | **토큰·로그인 제한 강화** | JWT는 localStorage에 24시간. HttpOnly 쿠키 또는 짧은 만료+갱신, 로그아웃 시 서버 쪽 무효화. 서버를 여러 대로 늘리면 로그인 제한을 DB/Redis로 옮긴다 |
+| 계속 | **브라우저 자동 시험을 저장소에 도입** | 이번 회귀 확인(게스트 흐름·로그인 흐름·다크모드 대비·로그아웃 후 잔존)은 임시 Playwright 스크립트로 했다. `frontend/`에 정식 포함하면 테마·로그인 회귀를 CI에서 잡는다 |
+| 계속 | **화면 스타일은 테마 변수만** | `tests/cssVars.test.ts`가 정의되지 않은 변수와 `features/` 안의 하드코딩 색 인라인 스타일을 막는다. 새 화면도 `styles.css`의 변수를 쓴다 |

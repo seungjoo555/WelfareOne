@@ -262,3 +262,67 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .conditions { font-size: 0.8em; }
   .header h1 { display: none; }
 }
+
+/* 로그인·회원가입 창(features/portal/CommonLoginModal.tsx). 색은 위에서 정의한 테마 변수만 쓴다
+   (정의되지 않은 변수를 쓰면 다크모드에서도 라이트 색이 남는다 — tests/cssVars.test.ts가 이를 검사한다). */
+.portal-modal {
+  width: 100%; max-width: 900px; max-height: 100%; overflow-y: auto;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 16px; padding: 24px;
+}
+.portal-head {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border);
+}
+.portal-eyebrow { display: block; font-size: 0.8em; font-weight: 700; color: var(--muted); }
+.portal-title { font-size: 1.25rem; margin-top: 4px; }
+.portal-close {
+  background: none; border: 0; border-radius: 8px; padding: 4px 10px;
+  font-size: 1.2rem; line-height: 1; color: var(--muted); cursor: pointer;
+}
+.portal-close:hover { color: var(--text); background: var(--surface-2); }
+.portal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.portal-panel {
+  min-width: 0; padding: 16px; border: 1px solid var(--border); border-radius: 12px;
+  display: flex; flex-direction: column;
+}
+.portal-guest { justify-content: space-between; }
+.portal-tabs { display: flex; border-bottom: 2px solid var(--border); margin-bottom: 16px; }
+.portal-tab {
+  flex: 1; padding: 10px; background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -2px;
+  color: var(--muted); cursor: pointer;
+}
+.portal-tab:hover:not(.active) { color: var(--text); }
+.portal-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 700; }
+.portal-form { display: flex; flex-direction: column; gap: 12px; }
+.portal-form-tight { gap: 10px; }
+.portal-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.portal-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.portal-label { font-size: 0.87em; font-weight: 700; }
+.portal-input {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg); color: var(--text);
+}
+.portal-input::placeholder { color: var(--muted); opacity: 0.85; }
+.portal-error { color: var(--danger); font-size: 0.87em; }
+.portal-hint { color: var(--muted); font-size: 0.8em; line-height: 1.5; }
+.portal-submit { justify-content: center; font-weight: 700; padding: 12px; margin-top: 4px; }
+.portal-guest-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.portal-guest-head h3 { font-size: 1rem; }
+.portal-guest-lead { margin-bottom: 16px; }
+.portal-note {
+  margin-top: 16px; padding: 10px; border-radius: 10px;
+  background: var(--warn-bg); color: var(--warn-text); font-size: 0.8em; line-height: 1.4;
+}
+@media (max-width: 720px) {
+  .portal-modal { padding: 16px; }
+  .portal-grid { grid-template-columns: 1fr; gap: 16px; }
+  .portal-row2 { grid-template-columns: 1fr; }
+}
+
+/* 사이드바의 로그인 상태 표시(features/chat/ChatPage.tsx) */
+.brand.user-brand { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.user-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 1rem; font-weight: 700; }
+.sidebar-login { padding-top: 12px; border-top: 1px solid var(--border); }
+.btn.block { width: 100%; justify-content: center; }
+.cloud-note { padding-top: 10px; border-top: 1px solid var(--border); font-size: 0.75em; color: var(--muted); }

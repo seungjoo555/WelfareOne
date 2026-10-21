@@ -167,6 +167,18 @@ export function ChatPage({ state, dispatch, history }: Props) {
     }
   };
 
+  // 로그아웃: 서버(Oracle)에서 불러온 대화가 다음 사용자에게 보이지 않도록 화면과 브라우저의 복사본을 비운다.
+  // 게스트가 직접 만든 상담 기록은 건드리지 않는다.
+  const handleLogout = () => {
+    removeAuthToken();
+    setUser(null);
+    setServerSessions([]);
+    setActiveServerSessionId(null);
+    setServerSession(null);
+    history.purgeServerCopies();
+    dispatch({ type: "NEW_CHAT" });
+  };
+
   const regionLabel = region ? [region.level1, region.level2].filter(Boolean).join(" ") : "";
 
   return (
@@ -176,29 +188,11 @@ export function ChatPage({ state, dispatch, history }: Props) {
         {!user ? (
           <div className="brand">{SERVICE_NAME}</div>
         ) : (
-          <div
-            className="brand user-brand"
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              paddingRight: "8px",
-            }}
-          >
-            <span style={{ fontSize: "16px", fontWeight: "bold", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={user.email}>
+          <div className="brand user-brand">
+            <span className="user-name" title={user.email}>
               👤 {user.nickname} 님
             </span>
-            <button
-              type="button"
-              className="btn small"
-              style={{ fontSize: "11px", padding: "2px 8px", background: "none", border: "1px solid var(--border-color, #d1d5db)" }}
-              onClick={() => {
-                removeAuthToken();
-                setUser(null);
-                setServerSessions([]);
-                setActiveServerSessionId(null);
-              }}
-            >
+            <button type="button" className="btn small" disabled={pending} onClick={handleLogout}>
               로그아웃
             </button>
           </div>
@@ -254,27 +248,13 @@ export function ChatPage({ state, dispatch, history }: Props) {
 
         {/* 사이드바 하단: 비로그인(로그인/가입 버튼) vs 로그인(클라우드 보관 배너) */}
         {!user ? (
-          <div style={{ padding: "12px", borderTop: "1px solid var(--border-color, #e5e7eb)" }}>
-            <button
-              type="button"
-              className="btn"
-              style={{
-                width: "100%",
-                background: "#059669",
-                color: "white",
-                fontWeight: "bold",
-                padding: "8px",
-                borderRadius: "8px",
-              }}
-              onClick={() => setAuthModalOpen(true)}
-            >
+          <div className="sidebar-login">
+            <button type="button" className="btn primary block" onClick={() => setAuthModalOpen(true)}>
               로그인 / 회원가입
             </button>
           </div>
         ) : (
-          <div style={{ padding: "10px 14px", fontSize: "11px", color: "var(--text-muted, #6b7280)", borderTop: "1px solid var(--border-color, #e5e7eb)" }}>
-            ☁️ 상담 기록이 Oracle DB에 안전하게 보관 중입니다.
-          </div>
+          <div className="cloud-note">☁️ 상담 기록이 Oracle DB에 안전하게 보관 중입니다.</div>
         )}
 
         <div className="sidebar-bottom">

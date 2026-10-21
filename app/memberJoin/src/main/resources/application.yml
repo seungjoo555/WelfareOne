@@ -1,5 +1,8 @@
 server:
   port: 8080
+  # 역방향 프록시(Nginx 등) 뒤에서 실제 클라이언트 IP를 쓰려면 FORWARD_HEADERS_STRATEGY=native 로 둔다(로그인 시도 제한이 IP 기준을 쓴다).
+  # 프록시 없이 직접 노출할 때는 none(기본)으로 둬야 요청 헤더로 IP를 속이지 못한다.
+  forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
 
 spring:
   autoconfigure:

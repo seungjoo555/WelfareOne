@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getAuthToken } from "../api/auth";
 import { CONFIRM_DELETE_ALL, CONFIRM_DELETE_ONE } from "../constants/text";
 import { historyStore } from "../storage";
 import { hasUserMessage, makeTitle } from "../storage/history";
+import { serverSessionIdOf } from "../utils/serverHistory";
 import type { ConversationSummary } from "../storage/history";
 import { initialState, stateFromConversation } from "./conversation";
 import type { Action, ConversationState } from "./conversation";
@@ -26,6 +28,8 @@ export interface ConversationHistory {
   rename: (id: string, title: string) => void;
   remove: (id: string) => void;
   clearAll: () => void;
+  // 서버(Oracle)에서 불러와 브라우저에 복사된 상담(server-…)만 지운다. 로그아웃 때 쓴다.
+  purgeServerCopies: () => void;
 }
 
 // 대화 상태를 localStorage에 저장하고, 사이드바 목록·전환·삭제를 제공한다.
@@ -40,6 +44,8 @@ export function useConversationHistory(state: ConversationState, dispatch: React
     if (!conversation_id || created_at === null || !region) return;
     if (messages === savedMessages.current) return;
     savedMessages.current = messages;
+    // 로그인 중에는 서버(Oracle)가 기준 저장소다. 브라우저에도 복사해 두면 로그아웃 뒤 다음 사용자에게 보이므로 저장하지 않는다.
+    if (getAuthToken()) return;
     if (!hasUserMessage(messages)) return; // 질문이 없는 상담은 기록하지 않는다
     const result = historyStore.save({
       id: conversation_id,
@@ -57,7 +63,7 @@ export function useConversationHistory(state: ConversationState, dispatch: React
 
   // 새로고침 뒤 마지막으로 보던 상담을 다시 열기 위해 현재 상담 id를 기억한다.
   useEffect(() => {
-    if (state.conversation_id) historyStore.setActiveId(state.conversation_id);
+    if (state.conversation_id && !getAuthToken()) historyStore.setActiveId(state.conversation_id);
   }, [state.conversation_id]);
 
   // 다른 탭에서 기록이 바뀌면 목록을 다시 읽는다.
@@ -110,5 +116,12 @@ export function useConversationHistory(state: ConversationState, dispatch: React
     dispatch({ type: "NEW_CHAT" });
   }, [state.pending, dispatch]);
 
-  return { items, activeId: state.conversation_id, saveError, select, rename, remove, clearAll };
+  const purgeServerCopies = useCallback(() => {
+    for (const item of historyStore.list()) {
+      if (serverSessionIdOf(item.id)) historyStore.remove(item.id);
+    }
+    setItems(historyStore.list());
+  }, []);
+
+  return { items, activeId: state.conversation_id, saveError, select, rename, remove, clearAll, purgeServerCopies };
 }
