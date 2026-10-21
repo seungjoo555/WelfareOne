@@ -3,17 +3,18 @@
 대상: `feature/integrate-chanul`(PR 병합 전 통합 브랜치). 목적은 세 서버(Vite·Spring·FastAPI)와 Oracle이 함께 정상 동작하는지 확인하고, 남은 개선을 순서대로 진행하는 것이다.
 실행 환경은 사용자 PC(Windows, PowerShell)를 기준으로 쓴다. 공용 Oracle(찬울님 PC)은 사설망이라 **클라우드 세션에서는 접속할 수 없고, 종단 시험은 같은 대역의 PC에서만 가능하다.**
 
-## 0. 현재 상태 (2026-10-20)
+## 0. 현재 상태 (2026-10-21, `feature/integrate-chanul` 헤드 `6460d1a` 기준)
 
 | 항목 | 상태 |
 |---|---|
 | PR [#7](https://github.com/JMT-maker/WelfareOne/pull/7) 검색 DB 갱신 스크립트 | 초안 |
-| PR [#8](https://github.com/JMT-maker/WelfareOne/pull/8) 찬울님 서비스 통합(병합 + 수정 + Java 테스트 24개 + Gradle wrapper) | 초안 |
-| PR [#9](https://github.com/JMT-maker/WelfareOne/pull/9) 연동 점검 보고서(HTML) | 초안 |
-| 검증 완료 | Java 컴파일·단위 테스트 24개, Spring 기동, 공용 Oracle JDBC 연결(읽기), 프론트 빌드·테스트 39개, Python 테스트 |
-| **미검증** | 가입→로그인→검색→기록 저장→재조회 종단 시험, 브라우저 화면 시험, 오류 코드 계약서 정합 |
+| PR [#8](https://github.com/JMT-maker/WelfareOne/pull/8) 찬울님 서비스 통합 | 리뷰 대기. 병합 충돌 없음(main이 조상), 일반 병합 권장 |
+| PR [#9](https://github.com/JMT-maker/WelfareOne/pull/9) 점검 보고서 | #8 안에 갱신본이 포함되어 있어 중복 — #8 병합 후 닫아도 됨 |
+| 완료된 개선(#8에 포함) | 오류 코드 계약서 17.4 정렬, 로그인 5회 실패 시 10분 제한(429), 기본 로그인 계정 비활성화, 서버 상담 대화 복원, JDK HTTP/1.1 클라이언트 |
+| 검증 결과(작성자 PC) | Python 186개, 프론트 47개, Java 35개, 종단 시험 `scripts/e2e_member_flow.py` 36/36(실제 Oracle·FastAPI·Gemini) |
+| 이 문서 이후 남은 일 | 8장 개선 후보, 계약서 `function_contracts.md` 정리(주소·가입 응답 형식), 외부 공개 전 비밀값 교체 |
 
-세 PR은 파일이 겹치지 않아 병합 순서는 상관없다. 다만 #8은 종단 시험(4장)을 통과한 뒤 병합하기를 권장한다.
+종단 시험은 `scripts/e2e_member_flow.py`가 자동으로 수행한다(시험 계정 생성 → 검증 → 정리, 시작·종료 건수 비교). 이 문서의 4~5장은 같은 흐름을 **손으로 확인**하고 싶을 때 쓰는 절차다. 상세한 변경 요약은 `docs/overview/integration_summary_2026-10-21.html`을 본다.
 
 ## 1. 준비
 
@@ -66,11 +67,11 @@ function Probe($method, $path, $json = $null) {
   catch { $e = $_.Exception.Response; "$([int]$e.StatusCode) " + (New-Object IO.StreamReader($e.GetResponseStream())).ReadToEnd() }
 }
 
-# 보호된 API는 인증 없이 거부되어야 한다 (현재 403, 계약서는 401: 11장)
+# 보호된 API는 인증 없이 거부되어야 한다 → 401 UNAUTHORIZED
 Probe GET /api/history/sessions
 # 가입 입력 검증은 DB를 쓰지 않는다 → 422
 Probe POST /api/auth/signup '{"email":"x","password":"1","nickname":""}'
-# 없는 계정 로그인 → USERS 조회(SELECT)만 발생 → 현재 400 (계약서는 401 INVALID_CREDENTIALS)
+# 없는 계정 로그인 → USERS 조회(SELECT)만 발생 → 401 INVALID_CREDENTIALS
 Probe POST /api/auth/login '{"email":"nobody@example.invalid","password":"wrong-password-1"}'
 ```
 
@@ -112,16 +113,16 @@ $pw    = "Test-" + [guid]::NewGuid().ToString("N").Substring(0,12)   # 일회용
 
 | # | 동작 | 호출 | 기대 결과 |
 |---|---|---|---|
-| 1 | 가입 | `$r = Call POST /api/auth/signup @{email=$email;password=$pw;nickname="통합시험";default_region_level1="서울특별시";default_region_level2="관악구";default_age=24}` | `access_token`, `user.has_api_key=false`. 중복 가입은 현재 400(계약서 409) |
+| 1 | 가입 | `$r = Call POST /api/auth/signup @{email=$email;password=$pw;nickname="통합시험";default_region_level1="서울특별시";default_region_level2="관악구";default_age=24}` | `access_token`, `user.has_api_key=false`. 중복 가입은 409 `USER_ALREADY_EXISTS` |
 | 2 | 로그인 | `$r = Call POST /api/auth/login @{email=$email;password=$pw}; $t = $r.access_token` | 토큰 발급 |
 | 3 | 내 정보 | `Call GET /api/auth/me $null $t` | 가입 때 값과 동일 |
 | 4 | 세션 생성 | `$s = Call POST /api/history/sessions @{region_level1="서울특별시";region_level2="관악구";age=24;title="통합시험"} $t; $sid = $s.session_id` | `session_id`(UUID) |
-| 5 | 남의 세션 차단 | 존재하지 않는 UUID로 호출(오류 응답이 예외로 던져지므로 `try { Call … } catch { $_.Exception.Response.StatusCode }`). `Call POST /api/ai/sessions/00000000-0000-0000-0000-000000000000/search @{question="x";region=@{level1="서울특별시";level2=""};age=24} $t` | 400 `INVALID_REQUEST`(계약서 403/404). **AI가 호출되지 않아야 함**(FastAPI 로그에 요청 없음) |
+| 5 | 남의 세션 차단 | 존재하지 않는 UUID로 호출(오류 응답이 예외로 던져지므로 `try { Call … } catch { $_.Exception.Response.StatusCode }`). `Call POST /api/ai/sessions/00000000-0000-0000-0000-000000000000/search @{question="x";region=@{level1="서울특별시";level2=""};age=24} $t` | 404 `SESSION_NOT_FOUND`(다른 사용자의 세션이면 403 `FORBIDDEN`). **AI가 호출되지 않아야 함**(FastAPI 로그에 요청 없음) |
 | 6 | 검색 | `Call POST /api/ai/sessions/$sid/search @{question="월세가 부담돼요";region=@{level1="서울특별시";level2="관악구"};age=24} $t @{"X-Gemini-Api-Key"="<본인 키>"}` — 서버 기본 AI를 쓰면 마지막 인자 생략 | `local_policies`/`national_policies` 후보. 키도 서버 AI도 없으면 401 `API_KEY_REQUIRED`가 **그대로** 전달되어야 함 |
 | 7 | 정책 질문 | 6의 `policy_id`를 `[uri]::EscapeDataString`으로 인코딩해 `POST /api/ai/sessions/$sid/policies/{id}/ask` `@{question="지원 대상이 어떻게 돼요?";policy_title="…";intent="eligibility"} $t` | `route=current_policy_question`, `answer` |
 | 8 | 기록 조회 | `Call GET /api/history/sessions/$sid $null $t` | `messages` 4개, `sender_type`은 **소문자** `user`/`assistant`, 후보·근거 JSON 문자열 포함 |
 | 9 | 제목 | 6 이후 목록의 `title`이 첫 질문(30자)으로 바뀌었는지 `GET /api/history/sessions` | 자동 제목 반영 |
-| 10 | 삭제 | `Call DELETE /api/history/sessions/$sid $null $t` 후 8을 다시 호출 | 삭제 후 400(계약서 404) |
+| 10 | 삭제 | `Call DELETE /api/history/sessions/$sid $null $t` 후 8을 다시 호출 | 삭제 후 404 `SESSION_NOT_FOUND` |
 
 DB에서 직접 확인할 것(읽기): 6~7 직후 `CHAT_MESSAGES`에서 해당 `session_id` 행의 `sender_type`이 `USER`/`ASSISTANT` 대문자인지.
 
@@ -169,10 +170,11 @@ conn.close()
 
 ## 7. 알려진 한계 (시험 때 오류로 오해하지 말 것)
 
-- 서버에서 서버 상담을 선택하면 **지역·나이만 복원**되고 대화 내용은 불러오지 않는다(`ChatPage.tsx`의 `handleSelectServerSession`이 `detail.messages`를 쓰지 않음).
 - 서버 저장 Gemini 키는 **화면에서 등록할 방법이 없다**. `saveServerApiKey`(`frontend/src/api/auth.ts`)가 정의만 되어 있고 어디서도 호출되지 않는다. 지금은 브라우저에 입력한 키가 우선 사용된다. 서버 저장 키를 쓰려면 `PUT /api/users/api-key`를 직접 호출하거나 화면을 추가해야 한다.
-- 로그인 사용자는 브라우저 기록(제목 수정 기능 포함)과 Oracle 기록이 사이드바에 따로 보인다.
-- 서버 기본 AI(Qwen)와 서버 저장 키의 우선순위: 요청 헤더 키 > 서버 저장 키 > 없음(FastAPI가 서버 기본 AI 또는 401).
+- 키 우선순위: 요청 헤더 키 > 서버 저장 키 > 없음(FastAPI가 서버 기본 AI 또는 401 `API_KEY_REQUIRED`).
+- **로그인 중의 대화도 브라우저(localStorage)에 저장되고, 로그아웃해도 남는다.** 로그아웃 후 게스트 사이드바에 방금 상담이 보이고 화면의 대화도 그대로다(9장 참고). 공용 PC에서는 사용 후 사이드바의 삭제를 직접 눌러야 한다.
+- 로그인 실패 제한은 서버 메모리 기반이라 재시작하면 초기화되고, 서버를 여러 대로 늘리면 공유되지 않는다.
+- 프론트 mock 모드(`npm run dev` 기본)에서는 로그인·가입이 동작하지 않는다. 로그인 시험은 `VITE_USE_MOCK=false`와 Spring이 필요하다.
 
 ## 8. 문제 해결
 
@@ -198,30 +200,36 @@ conn.close()
 - Spring 컨트롤러: `AuthController`(`/api/auth/signup|login|me`), `ApiKeyController`(`/api/users/api-key[/status]`), `HistoryController`(`/api/history/sessions[/{id}[/title]]`), `AiProxyController`(`/api/ai/sessions/{id}/search`, `/policies/{pid}/ask`).
 - 보안: JWT(24시간, stateless), 가입·로그인만 인증 면제, CORS는 `localhost:5173`/`127.0.0.1:5173`만.
 - 오류 형식: `{"error":{"code","message","details"}}` — FastAPI 오류는 상태·본문 그대로 전달.
+- 브라우저 기록: `useConversationHistory`는 로그인 여부와 관계없이 질문이 있는 모든 대화를 localStorage에 저장한다. 로그아웃(`ChatPage.tsx`)은 토큰과 서버 목록만 지우고 이 기록과 화면 상태는 그대로 둔다. 서버에서 불러온 상담(`server-<세션ID>`)도 같은 방식으로 복사된다.
 
-## 10. 남은 개선 작업 (우선순위·완료 기준)
+## 10. 개선 작업 현황
 
-| 순위 | 작업 | 위치 | 완료 기준 |
-|---|---|---|---|
-| P1 | **A. 오류 코드를 계약서 17장에 맞춤** | `SecurityConfig`(AuthenticationEntryPoint/AccessDeniedHandler), `AuthService`, `HistoryService`, `GlobalExceptionHandler`, 전용 예외 클래스 | 인증 없음 401 `UNAUTHORIZED`, 로그인 실패 401 `INVALID_CREDENTIALS`, 가입 중복 409 `USER_ALREADY_EXISTS`, 남의/없는 세션 403 `FORBIDDEN`/404 `SESSION_NOT_FOUND`. Java 테스트 추가 |
-| P1 | **B. 프론트 인증 오류 처리** | `ChatPage.tsx`의 `viaServer`(현재 401·403 둘 다 로그아웃) | 401은 로그아웃+직접 경로, 403/404는 로그아웃하지 않고 안내. 프론트 테스트 추가 |
-| P1 | **C. 서버 상담 대화 복원** | `ChatPage.tsx`, `state/conversation.ts`(LOAD 액션), `history.ts` | 사이드바에서 서버 상담을 선택하면 질문·후보·답변이 복원되고 이어서 질문 가능. `candidates_json`/`evidence_json` 파싱 |
-| P1 | **D. 기본 보안 계정 제거** | `MemberJoinApplication`/`SecurityConfig` | 시작 로그의 `Using generated security password` 사라짐 |
-| P2 | E. 로그인 실패 횟수 제한 | `AuthService` | 5회/10분 초과 시 429 |
-| P2 | F. 서버 키 등록 UI 또는 방침 확정 | `ApiKeyDialog.tsx`, `contract_update_proposal.md` 8-1 | 7장 한계 해소 또는 문서 수정 |
-| P2 | G. 상담 기록 기준 결정 | `ConversationList`, 사이드바 | 로그인 시 기준 저장소 확정, 게스트 기록 이전 |
-| P2 | H. 지역·정책 상세·설정 경로 | 운영 프록시(Nginx 등) | Spring 한 곳으로 모아도 401 없이 동작하거나 경로 분기 유지 |
-| P2 | I. 계약서 반영 | `docs/function_contracts.md` 17장 | 실제 구현(경로 `/api/auth`, `/api/history`, `/api/ai`)과 일치 |
-| P3 | J. 토큰 보관·갱신 | `auth.ts` | HttpOnly 쿠키 또는 만료 단축+갱신 |
-
-## 11. 시험 중 확인된 계약서와의 차이 (작업 A의 근거)
-
-| 상황 | 현재 | 계약서 |
+| 상태 | 작업 | 비고 |
 |---|---|---|
-| 토큰 없음/무효 | 403, 본문 없음 | 401 `UNAUTHORIZED` |
-| 로그인 실패 | 400 `INVALID_REQUEST` | 401 `INVALID_CREDENTIALS` |
-| 가입 중복 | 400 `INVALID_REQUEST` | 409 `USER_ALREADY_EXISTS` |
-| 남의 세션 / 없는 세션 | 400 `INVALID_REQUEST` | 403 / 404 |
+| 완료 | A. 오류 코드를 계약서 17.4에 맞춤 | 401 `UNAUTHORIZED`/`INVALID_CREDENTIALS`, 403 `FORBIDDEN`, 404 `SESSION_NOT_FOUND`, 409 `USER_ALREADY_EXISTS` |
+| 완료 | B. 프론트 인증 오류 처리 | `UNAUTHORIZED`만 로그아웃, `SESSION_NOT_FOUND`/`FORBIDDEN`은 세션 연결만 끊고 직접 경로로 재시도 |
+| 완료 | C. 서버 상담 대화 복원 | `frontend/src/utils/serverHistory.ts` |
+| 완료 | D. 기본 보안 계정 비활성화 | `application.yml`의 autoconfigure exclude |
+| 완료 | E. 로그인 실패 횟수 제한 | `LoginAttemptService` (같은 이메일 5회/10분, 메모리 기반) |
+| 열림 | K. 로그아웃·로그인 중 브라우저 기록 처리 | 9장. 로그인 중에는 localStorage에 저장하지 않거나, 로그아웃 때 서버에서 온 상담을 지우기 |
+| 열림 | L. 로그인 제한의 부작용 | 남의 이메일로 5회 실패시키면 그 계정이 10분간 잠김. 실패 기록 맵은 만료 항목을 지우지 않아 임의 이메일로 계속 늘어남. IP 기준 제한이나 주기적 정리 검토 |
+| 열림 | F. 서버 키 등록 UI 또는 방침 확정 | `ApiKeyDialog.tsx`, `contract_update_proposal.md` 8-1과 충돌 |
+| 열림 | G. 상담 기록 기준 결정 | 로그인 시 사이드바는 Oracle 목록만 보임. 게스트 기록 이전 없음 |
+| 열림 | H. 지역·정책 상세·설정 경로 | Spring 한 곳으로 모으면 로그인 때문에 막힘. 운영 프록시(Nginx 등)에서 경로 분기 유지 권장 |
+| 열림 | I. 계약서 반영 | `/sessions` 계열 주소(실제는 `/api/history/sessions`, `/api/ai/sessions/{id}/…`)와 가입 응답(토큰 포함) 정리. 미구현 항목(`/sessions/{id}/messages`, `/eligibility`) 표시 |
+| 열림 | J. 토큰 보관·갱신 | localStorage 저장, 24시간 유효. HttpOnly 쿠키 또는 만료 단축+갱신 |
+
+## 11. 오류 코드 (구현 기준)
+
+| 상황 | 응답 |
+|---|---|
+| 토큰 없음/무효 | 401 `UNAUTHORIZED` |
+| 로그인 실패 | 401 `INVALID_CREDENTIALS` |
+| 같은 이메일 5회 연속 실패 | 429 `TOO_MANY_LOGIN_ATTEMPTS` (10분) |
+| 가입 중복 | 409 `USER_ALREADY_EXISTS` |
+| 없는 세션 / 남의 세션 | 404 `SESSION_NOT_FOUND` / 403 `FORBIDDEN` |
+| AI 서버 오류 | FastAPI의 상태·`error` 본문을 그대로 전달(`API_KEY_REQUIRED`, `INVALID_API_KEY`, `LLM_RATE_LIMITED` 등) |
+| AI 서버 연결 실패 / 응답 시간 초과 | 503 / 504 `INTERNAL_ERROR` |
 
 ## 12. 비밀값 (나중에 교체하기로 한 항목)
 
