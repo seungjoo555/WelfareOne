@@ -41,6 +41,11 @@
   <p class="sub">대상 브랜치 <code>ChanUl3rd</code> (커밋 <code>f2406c0</code> "version01") · 점검일 2026-10-19 · 기준 main <code>9ad7591</code></p>
 </header>
 
+<div class="box">
+  <b>2026-10-21 업데이트</b> — 통합 브랜치 <code>feature/integrate-chanul</code>에서 아래 문제를 수정하고 종단 시험까지 마쳤습니다. 결과는 <a href="#result">10장</a>을 보세요.
+  <b>치명 3건(B-1~B-3) 중 2건과 주의 항목 대부분이 해결</b>됐고(비밀값 교체 B-2는 보류), 남은 것은 10장 "아직 남은 것"입니다. 본문(1~9장)은 <b>점검 당시(10/19)의 상태</b>를 그대로 둔 기록입니다.
+</div>
+
 <!-- ================= 1 ================= -->
 <h2>1. 결론 한눈에 보기</h2>
 <div class="cards">
@@ -208,6 +213,71 @@
   <tr><td>판단 근거의 성격</td><td>B-1(대소문자)과 C-1(AI 요청 경로)은 <b>코드와 DB 제약 조회로 확인한 사실</b>이고, 실제 실행 시 오류 메시지(예: ORA-02290)는 기동 시험에서 확정하는 것이 좋습니다. C-2(오류 코드 유실)는 코드 흐름상 확실하며 시험으로 재확인 권장</td></tr>
   <tr><td>보안 처리</td><td>접속 정보는 파일·로그·이 문서에 남기지 않았고 점검 중 프로세스 환경변수로만 사용했습니다.</td></tr>
 </table>
+
+
+<!-- ================= 10 ================= -->
+<h2 id="result">10. 수정과 종단 시험 결과 (2026-10-21)</h2>
+<div class="cards">
+  <div class="card ok"><b>테스트 82개</b>Java 35 + 프론트 47 통과 (Python 186개도 통과)</div>
+  <div class="card ok"><b>종단 36/36</b>실제 Oracle·FastAPI·Gemini로 가입~기록 저장~삭제까지 통과</div>
+  <div class="card ok"><b>화면 확인</b>브라우저에서 가입 → 검색 → 새로고침 후 상담 복원 → 같은 세션에 이어서 질문</div>
+  <div class="card warn"><b>시험 중 버그 3건</b>모의 서버 테스트로는 안 잡히고 실제 연결에서만 드러남(수정 완료)</div>
+</div>
+
+<h3>10-1. 점검 항목별 처리</h3>
+<table>
+  <tr><th style="width:8%">#</th><th style="width:30%">문제</th><th style="width:12%">상태</th><th>처리 내용</th></tr>
+  <tr><td>B-1</td><td>대화 저장 실패(발신자 대소문자)</td><td><span class="tag t-ok">해결</span></td><td>저장은 대문자(<code>USER</code>/<code>ASSISTANT</code>), 화면에는 소문자로 응답. DB에서 확인</td></tr>
+  <tr><td>B-2</td><td>비밀값이 Git에 올라감</td><td><span class="tag t-warn">보류</span></td><td>팀 내부 공유 범위라 지금은 유지하기로 결정(환경변수로 덮어쓸 수 있게만 변경). <b>교체는 추후</b></td></tr>
+  <tr><td>B-3</td><td>DB 접속 정보가 개인 PC용</td><td><span class="tag t-ok">해결</span></td><td><code>DB_URL</code>/<code>DB_USERNAME</code>/<code>DB_PASSWORD</code> 환경변수, 기본 주소는 공용 Oracle. 접속·기동 확인</td></tr>
+  <tr><td>C-1</td><td>AI 요청이 Spring을 거치지 않음</td><td><span class="tag t-ok">해결</span></td><td>로그인 상태에서 <code>/api/ai/sessions/{id}/...</code> 경유, 세션 자동 생성, 실패 시 FastAPI 직접 호출로 대체</td></tr>
+  <tr><td>C-2</td><td>FastAPI 오류 코드 유실</td><td><span class="tag t-ok">해결</span></td><td>상태·본문 그대로 전달(<code>INVALID_API_KEY</code> 등). 실제 Gemini 오류로 확인</td></tr>
+  <tr><td>C-3</td><td>시간 제한 없음</td><td><span class="tag t-ok">해결</span></td><td>연결 3초·응답 60초, 초과 시 503/504. 실제 HTTP 시험으로 확인</td></tr>
+  <tr><td>C-4</td><td>키 저장 방침 충돌</td><td><span class="tag t-warn">결정 필요</span></td><td>우선순위는 <b>요청 헤더 키 &gt; 서버 저장 키 &gt; 없음(서버 기본 AI)</b>으로 구현. 서버 저장을 계속 허용할지는 팀 결정</td></tr>
+  <tr><td>C-5</td><td>지역 목록·정책 상세·설정 경로</td><td><span class="tag t-info">현행 유지</span></td><td>Vite가 경로별로 Spring/FastAPI에 나눠 보냄(프록시 경유 시험 통과). 운영 경로 설계는 별도</td></tr>
+  <tr><td>C-6</td><td>토큰 보안</td><td><span class="tag t-warn">일부</span></td><td>잘못된·만료 토큰은 401 JSON으로 처리. 토큰 저장 방식·갱신은 그대로</td></tr>
+  <tr><td>C-7</td><td>로그인 시도 제한</td><td><span class="tag t-ok">해결</span></td><td>같은 이메일 5회 연속 실패 시 10분간 429 <code>TOO_MANY_LOGIN_ATTEMPTS</code>(계약서에 코드 추가). 메모리 방식이라 서버 재시작 시 초기화</td></tr>
+  <tr><td>C-8</td><td>AES 마스터 키 길이</td><td><span class="tag t-ok">해결</span></td><td>32바이트 미만이면 기동 중단</td></tr>
+  <tr><td>C-9</td><td>자동 테스트 없음</td><td><span class="tag t-ok">해결</span></td><td>Java 단위·실제 HTTP 테스트 35개 추가 + 종단 시험 스크립트 <code>scripts/e2e_member_flow.py</code></td></tr>
+  <tr><td>C-10</td><td>빌드 환경·저장소 정리</td><td><span class="tag t-ok">해결</span></td><td><code>gradlew</code>(Gradle 8.10.2) 추가, 빌드 캐시 17개 제거와 <code>.gitignore</code>. <code>./gradlew test</code>로 실행</td></tr>
+  <tr><td>C-11</td><td>두 개의 상담 기록</td><td><span class="tag t-warn">결정 필요</span></td><td>사이드바에 브라우저 기록과 Oracle 기록이 따로 보이는 상태 유지. 서버 상담을 복원하면 브라우저 기록에도 사본이 남을 수 있음</td></tr>
+  <tr><td>C-12</td><td><code>intent</code> 전달 누락</td><td><span class="tag t-ok">해결</span></td><td>중계가 <code>intent</code>를 FastAPI에 전달</td></tr>
+  <tr><td>추가</td><td>남의 세션 ID로 AI 호출·기록 쓰기 가능</td><td><span class="tag t-ok">해결</span></td><td>AI 호출 전에 세션 소유자 검증(없는 세션 404, 남의 세션 403). 침입 시도 후 기록이 늘지 않음을 DB로 확인</td></tr>
+  <tr><td>추가</td><td>오류 코드가 계약서와 다름(403·400)</td><td><span class="tag t-ok">해결</span></td><td><code>UNAUTHORIZED</code> 401, <code>FORBIDDEN</code> 403, <code>INVALID_CREDENTIALS</code> 401, <code>USER_ALREADY_EXISTS</code> 409, <code>SESSION_NOT_FOUND</code> 404</td></tr>
+  <tr><td>추가</td><td>기본 로그인 계정(임시 비밀번호) 자동 생성</td><td><span class="tag t-ok">해결</span></td><td>자동 설정 제외</td></tr>
+  <tr><td>추가</td><td>사이드바에서 상담을 골라도 대화가 복원되지 않음</td><td><span class="tag t-ok">해결</span></td><td>질문·후보·답변·근거·자료 링크를 복원하고 같은 세션에 이어서 기록. 브라우저에서 확인</td></tr>
+</table>
+
+<h3>10-2. 종단 시험에서만 드러난 버그 (수정 완료)</h3>
+<table>
+  <tr><th style="width:26%">증상</th><th style="width:34%">원인</th><th>조치와 재발 방지</th></tr>
+  <tr><td>FastAPI의 <code>INVALID_API_KEY</code>가 <code>INTERNAL_ERROR</code>로 바뀌어 전달됨</td><td>Spring 기본 HTTP 클라이언트(<code>HttpURLConnection</code>)는 POST 요청이 401을 받으면 응답 본문을 읽지 못함</td><td>JDK HTTP 클라이언트로 교체. 모의 서버로는 재현되지 않아 <b>실제 HTTP 서버를 띄우는 테스트</b>(<code>FastApiClientServiceHttpTest</code>) 추가</td></tr>
+  <tr><td>교체 후 검색이 422로 실패</td><td>JDK 클라이언트가 기본으로 HTTP/2 업그레이드(<code>Upgrade: h2c</code>)를 시도하고 uvicorn(FastAPI)이 "Unsupported upgrade request"로 거절</td><td>HTTP/1.1로 고정. 업그레이드 헤더가 가지 않는다는 검증을 테스트에 추가</td></tr>
+  <tr><td>응답 시간 초과가 504가 아닌 503으로 분류</td><td>Spring이 원인 예외를 이어 주지 않아 메시지로만 구분 가능</td><td>원인 사슬과 메시지를 함께 보고 분류, 실제 지연 서버로 테스트</td></tr>
+</table>
+
+<h3>10-3. 종단 시험 36개 항목</h3>
+<table>
+  <tr><th style="width:24%">영역</th><th>확인한 것 (모두 통과)</th></tr>
+  <tr><td>가입·로그인</td><td>가입 201과 토큰, 비밀번호가 BCrypt로 저장(평문 아님), 중복 가입 409, 잘못된 비밀번호 401, 토큰 없음·잘못된 토큰 401(JSON), 프로필 조회, 5회 실패 후 429</td></tr>
+  <tr><td>상담·AI·기록</td><td>세션 생성, Spring 경유 검색(후보 4+12건)과 정책 질문(<code>intent</code> 전달, 근거 포함), DB에 <code>USER</code>/<code>ASSISTANT</code> 4건 누적, 첫 질문으로 제목 자동 변경, 상세 조회에서 소문자·후보 JSON 보존</td></tr>
+  <tr><td>접근 통제</td><td>다른 계정의 세션으로 AI 호출·조회·삭제 모두 403, 없는 세션 404, 침입 시도 후 기록 건수 불변</td></tr>
+  <tr><td>Gemini 키</td><td>등록, DB에 암호문 저장(평문 없음), 상태 조회에서 키 미노출, 저장된 가짜 키가 Gemini까지 전달되어 <code>INVALID_API_KEY</code> 401 그대로 응답, AI 오류 시 기록 미저장, 삭제 후 서버 기본 AI로 정상 응답, 요청 헤더 키 우선 적용</td></tr>
+  <tr><td>경로·정리</td><td>Vite 프록시 경유 로그인(Spring)과 지역 목록(FastAPI), 세션 삭제 후 404와 메시지 연쇄 삭제, 시험 계정 삭제 후 DB 건수가 시작 전과 동일</td></tr>
+  <tr><td>브라우저 화면</td><td>가입 → 로그인 상태 표시 → 질문 → 후보와 쪽 넘김 → Oracle 기록 목록에 자동 등록 → 새로고침 후 로그인 유지 → 기록 선택 시 대화 복원 → 정책 선택·자주 묻는 질문 → 같은 세션에 4건 기록</td></tr>
+</table>
+
+<h3>10-4. 아직 남은 것</h3>
+<ol>
+  <li><b>비밀값 교체</b>(DB 비밀번호, JWT 서명 키, AES 마스터 키) — 지금은 팀 내부 공유 범위라 보류. 교체 순서는 7장 참고.</li>
+  <li><b>키 서버 저장 방침</b>(D-1)과 계약서 제안 8-1 정리.</li>
+  <li><b>상담 기록의 기준</b>(D-2): 복원한 서버 상담이 브라우저 기록에도 사본으로 남는 문제, 로그인 시 게스트 기록 이전.</li>
+  <li>복원한 대화에서는 AI 관련도 판정 결과(<code>relevance_checked</code>)가 저장되지 않아 "관련도 낮음" 표시가 거리 기준으로 대체됨.</li>
+  <li>로그인 시도 제한은 서버 1대 기준(메모리). 여러 대로 늘리면 DB/Redis로 이동. 토큰 저장 방식(<code>localStorage</code>)과 갱신은 그대로.</li>
+  <li>운영 배포 경로(Nginx 등)와 <b>공용 Oracle을 찬울님 개인 PC에서 서버로 옮기는 시점</b>(D-4).</li>
+  <li>FastAPI가 꺼진 상태에서 Spring이 503을 돌려주는 흐름은 실제 HTTP 단위 테스트로만 확인했고, 계정을 쓴 종단 시험으로는 하지 않았습니다.</li>
+</ol>
+<p class="small">시험 방법: Gradle 8.10.2(공식 체크섬 확인)로 <code>./gradlew test</code>, 실제 Oracle 21.3 / FastAPI / Gemini를 연결한 <code>scripts/e2e_member_flow.py</code>, Chrome 브라우저 화면 확인. 시험 계정은 모두 삭제했고 기존 사용자 데이터는 읽지도 건드리지도 않았습니다.</p>
 
 <p class="small">작성: Claude Code · 근거 파일: <code>app/memberJoin/**</code>, <code>frontend/src/api/{auth,history}.ts</code>, <code>frontend/src/features/chat/ChatPage.tsx</code>, <code>frontend/vite.config.ts</code>, <code>docs/oracle_schema.sql</code>, <code>docs/AUTH_AND_HISTORY_PLAN.md</code></p>
 
