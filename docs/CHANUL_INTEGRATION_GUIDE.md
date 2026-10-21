@@ -1,15 +1,15 @@
 # 찬울님 회원·이력 서비스 통합 작업 가이드
 
-대상: `feature/integrate-chanul`(PR 병합 전 통합 브랜치). 목적은 세 서버(Vite·Spring·FastAPI)와 Oracle이 함께 정상 동작하는지 확인하고, 남은 개선을 순서대로 진행하는 것이다.
+대상: 찬울님 회원·이력 서비스를 병합한 `main`(PR #8, 2026-10-21 병합). 목적은 세 서버(Vite·Spring·FastAPI)와 Oracle이 함께 정상 동작하는지 확인하고, 남은 개선을 순서대로 진행하는 것이다.
 실행 환경은 사용자 PC(Windows, PowerShell)를 기준으로 쓴다. 공용 Oracle(찬울님 PC)은 사설망이라 **클라우드 세션에서는 접속할 수 없고, 종단 시험은 같은 대역의 PC에서만 가능하다.**
 
-## 0. 현재 상태 (2026-10-21, `feature/integrate-chanul` 헤드 `6460d1a` 기준)
+## 0. 현재 상태 (2026-10-21, `main` `8233c1b` 기준)
 
 | 항목 | 상태 |
 |---|---|
 | PR [#7](https://github.com/JMT-maker/WelfareOne/pull/7) 검색 DB 갱신 스크립트 | 초안 |
-| PR [#8](https://github.com/JMT-maker/WelfareOne/pull/8) 찬울님 서비스 통합 | 리뷰 대기. 병합 충돌 없음(main이 조상), 일반 병합 권장 |
-| PR [#9](https://github.com/JMT-maker/WelfareOne/pull/9) 점검 보고서 | #8 안에 갱신본이 포함되어 있어 중복 — #8 병합 후 닫아도 됨 |
+| PR [#8](https://github.com/JMT-maker/WelfareOne/pull/8) 찬울님 서비스 통합 | **병합 완료** (`8233c1b`, 일반 병합) |
+| PR [#9](https://github.com/JMT-maker/WelfareOne/pull/9) 점검 보고서 | #8 안에 갱신본이 포함되어 있어 중복 — 닫아도 됨 |
 | 완료된 개선(#8에 포함) | 오류 코드 계약서 17.4 정렬, 로그인 5회 실패 시 10분 제한(429), 기본 로그인 계정 비활성화, 서버 상담 대화 복원, JDK HTTP/1.1 클라이언트 |
 | 검증 결과(작성자 PC) | Python 186개, 프론트 47개, Java 35개, 종단 시험 `scripts/e2e_member_flow.py` 36/36(실제 Oracle·FastAPI·Gemini) |
 | 이 문서 이후 남은 일 | 8장 개선 후보, 계약서 `function_contracts.md` 정리(주소·가입 응답 형식), 외부 공개 전 비밀값 교체 |
